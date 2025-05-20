@@ -32,7 +32,6 @@ except ImportError:
     from pyboolnet.file_exchange import bnet2primes
     from pyboolnet.prime_implicants import create_variables
 
-import operator
 import random
 import itertools
 import re
@@ -51,8 +50,6 @@ from PIL import Image
 import os
 
 import tempfile
-import numpy as np
-import matplotlib.image as mpimg
 
 # Load or define a partial Boolean
 primes = get_primes("xiao_wnt5a") # faure_cellcycle xiao_wnt5a
@@ -301,25 +298,19 @@ def transform(expr, node_name):
 
 
 def update_formula(formula, node_to_evolve):
-      # Try the normal PyBoolNet approach
-      with tempfile.NamedTemporaryFile(mode='w', suffix='.bnet', delete=False) as f:
-          # Copy all original nodes except the one we're evolving
-          for node in primes:
-              if node != node_to_evolve:
-                  # For nodes we're not evolving, use their original rules
-                  # This might need adjustment based on how your primes are structured
-                  if 'str' in primes[node][1]:
-                      original_rule = primes[node][1]['str']
-                      f.write(f"{node}, {original_rule}\n")
+        # Try the normal PyBoolNet approach
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.bnet', delete=False) as f:
+            # Copy all original nodes except the one we're evolving
+            for node in primes:
 
-          # Add our evolved rule
-          f.write(f"{node_to_evolve}, {formula}\n")
-          temp_file = f.name
+            # Add our evolved rule
+            f.write(f"{node_to_evolve}, {formula}\n")
+            temp_file = f.name
 
-      temp_primes = bnet2primes(temp_file)
-      # Remove the temporary file
-      os.unlink(temp_file)
-      return temp_primes
+        temp_primes = bnet2primes(temp_file)
+        # Remove the temporary file
+        os.unlink(temp_file)
+        return temp_primes
 
 
 def update_primes(formula, node_to_evolve):
