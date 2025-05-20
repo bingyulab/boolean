@@ -7,24 +7,52 @@ Original file is located at
     https://colab.research.google.com/drive/1tbhpKwKngCV6Dhhtej6aFlNggbInzjbb
 """
 
-from deap import base, creator, tools, gp
+try:
+    from deap import base, creator, tools, gp
+except ImportError:
+    ! pip3 install git+https://github.com/DEAP/deap@master
+    !apt-get install -y libtinfo5
+    from deap import base, creator, tools, gp
 
-import pyboolnet.interaction_graphs as IG
-import pyboolnet.attractors as Attractors
-import pyboolnet.state_transition_graphs as STGs
-from pyboolnet.repository import get_primes
-from pyboolnet.prime_implicants import create_variables
+try:
+    import pyboolnet.file_exchange as FileExchange
+    import pyboolnet.interaction_graphs as IG
+    import pyboolnet.attractors as Attractors
+    import pyboolnet.state_transition_graphs as STGs
+    from pyboolnet.repository import get_primes
+    from pyboolnet.file_exchange import bnet2primes
+    from pyboolnet.prime_implicants import create_variables
+except ImportError:
+    ! pip3 install git+https://github.com/hklarner/pyboolnet@master
+    import pyboolnet.file_exchange as FileExchange
+    import pyboolnet.interaction_graphs as IG
+    import pyboolnet.attractors as Attractors
+    import pyboolnet.state_transition_graphs as STGs
+    from pyboolnet.repository import get_primes
+    from pyboolnet.file_exchange import bnet2primes
+    from pyboolnet.prime_implicants import create_variables
 
+import operator
 import random
 import itertools
 import re
 
-import cairosvg
+try:
+    import cairosvg
+    import igraph as ig
+except ImportError:
+    !apt-get install graphviz libgraphviz-dev pkg-config
+    ! pip3 install pydot igraph cairosvg pygraphviz
+    import cairosvg
+    import igraph as ig
 
 import matplotlib.pyplot as plt
 from PIL import Image
 import os
 
+import tempfile
+import numpy as np
+import matplotlib.image as mpimg
 
 # Load or define a partial Boolean
 primes = get_primes("xiao_wnt5a") # faure_cellcycle xiao_wnt5a
@@ -273,12 +301,50 @@ def transform(expr, node_name):
 
 
 def update_formula(formula, node_to_evolve):
+      # Try the normal PyBoolNet approach
+      with tempfile.NamedTemporaryFile(mode='w', suffix='.bnet', delete=False) as f:
+          # Copy all original nodes except the one we're evolving
+          for node in primes:
+              if node != node_to_evolve:
+                  # For nodes we're not evolving, use their original rules
+                  # This might need adjustment based on how your primes are structured
+                  if 'str' in primes[node][1]:
+                      original_rule = primes[node][1]['str']
+                      f.write(f"{node}, {original_rule}\n")
+
+          # Add our evolved rule
+          f.write(f"{node_to_evolve}, {formula}\n")
+          temp_file = f.name
+
+      temp_primes = bnet2primes(temp_file)
+      # Remove the temporary file
+      os.unlink(temp_file)
+      return temp_primes
+
+
+def update_primes(formula, node_to_evolve):
     temp_primes = primes.copy()
-    updated = transform(formula, node_to_evolve).split(',')[-1].strip()
-    # print(f"updated: {updated}")
+    updated = transform(str(formula), node_to_evolve).split(',')[-1].strip()
+    print(f"formula: {formula}, updated: {updated}")
     create_variables(temp_primes, {f"{node_to_evolve}": f"{updated}"})
     return temp_primes
 
+# —— examples ——
+rules = {
+    "x4": "x4",
+    "x2": "OR(x6, OR(x4, x2))",
+    "x3": "NOT(x7)",
+    "x6": "OR(x4, x3)",
+    "x7": "OR(x7, NOT(x2))",
+    "x1": "NOT(x6)",
+    "x5": "OR(NOT(x7), x2)"
+}
+
+# for node, expr in rules.items():
+#     print(transform(expr, node))
+#     print(update_formula(expr, node))
+#     print(Attractors.compute_attractors(update_formula(expr, node), "synchronous"))
+#     print()
 
 # --- Fitness evaluation
 def evaluate(individual, node_to_evolve="x1"):
@@ -291,14 +357,12 @@ def evaluate(individual, node_to_evolve="x1"):
     # Convert the GP tree to a PyBoolNet compatible formula
     formula = tree_to_pyboolnet_formula(individual, n)
     # print(f"formula: {type(formula)}")
-    # Directly compile and evaluate the function without NuSMV
-    func = toolbox.compile(expr=individual)
 
     try:
         # Convert BNET to primes format
         temp_primes = update_formula(formula, node_to_evolve)
 
-        # Update only the rule for the specified node
+        # # Update only the rule for the specified node
         modified_primes[node_to_evolve] = temp_primes[node_to_evolve]
 
         # Compute attractors with the modified network
@@ -583,7 +647,7 @@ print("Fitness:", best_halloffame[0].fitness.values[0])
 
 def plot(formula, node_to_evolve, filename):
     # Plot GP network figure (updated network with GP rule for node x1)
-    gp_primes = update_formula(str(formula), node_to_evolve)
+    gp_primes = update_primes(str(formula), node_to_evolve)
 
     # Generate and display the interaction graph for the updated network
     IG.create_image(gp_primes, filename)
@@ -595,14 +659,13 @@ display_svg_file("igraph_gp_top1.svg")
 
 display_svg_file("igraph_gp_halloffame.svg")
 
-formula_halloffame_extra = tree_to_pyboolnet_formula(best_halloffame[1], len(target_attractors[0]))
-plot(formula_halloffame_extra, node, 'igraph_gp_halloffame_extra.svg')
+plot(best_halloffame[1], node, 'igraph_gp_halloffame.svg')
 display_svg_file("igraph_gp_halloffame_extra.svg")
 
 display_svg_file("igraph.svg")
 
-top1_primes = update_formula(str(best_top1), node)
-halloffame_primes = update_formula(str(best_halloffame[0]), node)
+top1_primes = update_primes(str(best_top1), node)
+halloffame_primes = update_primes(str(best_halloffame[0]), node)
 
 print("Original attractors:")
 attractors = Attractors.compute_attractors(primes, "synchronous")
