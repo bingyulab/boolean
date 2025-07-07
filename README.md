@@ -4,6 +4,12 @@ A Boolean model implementation.
 
 ## Installation
 
+CaSQ is available on PyPI and can be installed using pip:
+
+```bash
+pip install casq
+pip install cellnopt.wrapper # cellnopt
+```
 ### Local Installation
 
 #### Linux
@@ -33,3 +39,11 @@ pip install pydot igraph cairosvg pygraphviz
 ### Alternative Usage
 
 For a simpler setup, you can open the project in Google Colab and run all cells.
+
+
+## Usage
+### Data Preparation
+```bash
+casq data/file.xml data/apoptosis.xml
+```
+
