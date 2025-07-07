@@ -1,0 +1,222 @@
+Optimization of fissionyeast_trunc_1.txt
+Parameters: pop_size=100, generations=200, iterations=1, solutions=1
+Time: 292.69 seconds
+
+Solution 1:
+  Attractors: 33
+  Attractor 1:
+    Type: cycle
+    Length: 2
+    States:
+      0111111100
+      0101100111
+  Attractor 2:
+    Type: fixed point
+    Length: 1
+    States:
+      0110001010
+  Attractor 3:
+    Type: cycle
+    Length: 4
+    States:
+      0111110100
+      0101110111
+      0101111101
+      0101100101
+  Attractor 4:
+    Type: cycle
+    Length: 4
+    States:
+      0111010010
+      0111011011
+      0111001001
+      0111000000
+  Attractor 5:
+    Type: cycle
+    Length: 4
+    States:
+      0110110010
+      0110111011
+      0110101001
+      0110100000
+  Attractor 6:
+    Type: cycle
+    Length: 4
+    States:
+      0101101101
+      0111100100
+      0111110110
+      0101111111
+  Attractor 7:
+    Type: fixed point
+    Length: 1
+    States:
+      0101110101
+  Attractor 8:
+    Type: cycle
+    Length: 4
+    States:
+      0111010011
+      0111011001
+      0111000001
+      0111010000
+  Attractor 9:
+    Type: cycle
+    Length: 4
+    States:
+      0110110011
+      0110111001
+      0110100001
+      0110110000
+  Attractor 10:
+    Type: cycle
+    Length: 4
+    States:
+      0110101100
+      0110100110
+      0110111110
+      0110101111
+  Attractor 11:
+    Type: cycle
+    Length: 4
+    States:
+      0111000010
+      0111011010
+      0111001011
+      0111001000
+  Attractor 12:
+    Type: cycle
+    Length: 4
+    States:
+      0110100100
+      0110110110
+      0110111111
+      0110101101
+  Attractor 13:
+    Type: cycle
+    Length: 4
+    States:
+      0110100010
+      0110111010
+      0110101011
+      0110101000
+  Attractor 14:
+    Type: cycle
+    Length: 4
+    States:
+      0111101100
+      0111100110
+      0111111110
+      0101101111
+  Attractor 15:
+    Type: cycle
+    Length: 2
+    States:
+      0111000011
+      0111011000
+  Attractor 16:
+    Type: cycle
+    Length: 4
+    States:
+      0110100101
+      0110110100
+      0110110111
+      0110111101
+  Attractor 17:
+    Type: cycle
+    Length: 2
+    States:
+      0110100011
+      0110111000
+  Attractor 18:
+    Type: fixed point
+    Length: 1
+    States:
+      0110001110
+  Attractor 19:
+    Type: cycle
+    Length: 4
+    States:
+      0111010110
+      0111011111
+      0111001101
+      0111000100
+  Attractor 20:
+    Type: cycle
+    Length: 4
+    States:
+      0111010111
+      0111011101
+      0111000101
+      0111010100
+  Attractor 21:
+    Type: cycle
+    Length: 4
+    States:
+      0111000110
+      0111011110
+      0111001111
+      0111001100
+  Attractor 22:
+    Type: cycle
+    Length: 2
+    States:
+      0111000111
+      0111011100
+  Attractor 23:
+    Type: cycle
+    Length: 2
+    States:
+      0110100111
+      0110111100
+  Attractor 24:
+    Type: fixed point
+    Length: 1
+    States:
+      0111001010
+  Attractor 25:
+    Type: fixed point
+    Length: 1
+    States:
+      0110101010
+  Attractor 26:
+    Type: fixed point
+    Length: 1
+    States:
+      0111101010
+  Attractor 27:
+    Type: fixed point
+    Length: 1
+    States:
+      0111001110
+  Attractor 28:
+    Type: fixed point
+    Length: 1
+    States:
+      0110101110
+  Attractor 29:
+    Type: fixed point
+    Length: 1
+    States:
+      0111101110
+  Attractor 30:
+    Type: fixed point
+    Length: 1
+    States:
+      0111010001
+  Attractor 31:
+    Type: fixed point
+    Length: 1
+    States:
+      0110110001
+  Attractor 32:
+    Type: fixed point
+    Length: 1
+    States:
+      0111010101
+  Attractor 33:
+    Type: fixed point
+    Length: 1
+    States:
+      0110110101
+
