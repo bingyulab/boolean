@@ -1,0 +1,77 @@
+Network Statistics
+==================
+
+Number of nodes: 34
+Number of edges: 33
+Average degree: 1.94
+
+Nodes:
+  csa1 (in: 1, out: 0)
+  csa11 (in: 3, out: 0)
+  csa2 (in: 1, out: 1)
+  csa3 (in: 1, out: 1)
+  csa5 (in: 3, out: 0)
+  csa6 (in: 3, out: 1)
+  sa10 (in: 2, out: 1)
+  sa14 (in: 1, out: 3)
+  sa17 (in: 0, out: 2)
+  sa19 (in: 1, out: 3)
+  sa2 (in: 1, out: 3)
+  sa25 (in: 1, out: 2)
+  sa27 (in: 2, out: 2)
+  sa29 (in: 1, out: 1)
+  sa3 (in: 0, out: 0)
+  sa31 (in: 1, out: 1)
+  sa40 (in: 0, out: 2)
+  sa41 (in: 0, out: 0)
+  sa42 (in: 1, out: 1)
+  sa43 (in: 0, out: 0)
+  sa44 (in: 1, out: 0)
+  sa47 (in: 1, out: 3)
+  sa48 (in: 1, out: 0)
+  sa50 (in: 1, out: 3)
+  sa69 (in: 0, out: 0)
+  sa72 (in: 0, out: 0)
+  sa73 (in: 0, out: 0)
+  sa74 (in: 0, out: 0)
+  sa75 (in: 0, out: 0)
+  sa76 (in: 0, out: 0)
+  sa77 (in: 0, out: 0)
+  sa79 (in: 2, out: 1)
+  sa89 (in: 1, out: 1)
+  sa92 (in: 3, out: 1)
+
+Edges:
+  csa2 -> sa79
+  csa3 -> sa47
+  csa6 -> sa10
+  sa10 -> csa1
+  sa14 -> csa5
+  sa14 -> csa6
+  sa14 -> sa92
+  sa17 -> sa31
+  sa17 -> sa50
+  sa19 -> csa5
+  sa19 -> csa6
+  sa19 -> sa92
+  sa2 -> csa11
+  sa2 -> csa3
+  sa2 -> sa42
+  sa25 -> sa10
+  sa25 -> sa44
+  sa27 -> csa11
+  sa27 -> sa2
+  sa29 -> csa11
+  sa31 -> sa27
+  sa40 -> sa19
+  sa40 -> sa89
+  sa42 -> sa48
+  sa47 -> csa2
+  sa47 -> sa14
+  sa47 -> sa79
+  sa50 -> csa5
+  sa50 -> csa6
+  sa50 -> sa92
+  sa79 -> sa29
+  sa89 -> sa27
+  sa92 -> sa25
