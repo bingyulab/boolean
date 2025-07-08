@@ -8,18 +8,49 @@ import pyboolnet.state_transition_graphs as STGs
 from pyboolnet.repository import get_primes
 from pyboolnet.file_exchange import bnet2primes
 from pyboolnet.prime_implicants import create_variables
-import rpy2.robjects as robjects
+from rpy2.robjects import r
 from rpy2.robjects.packages import importr
+import re
 
 
 # 1. Load your prior knowledge network
-# Use rpy2 to call R functions
-r = robjects.r
+# Import BoolNet
 boolnet = importr('BoolNet')
 
-# Load SBML file and convert to bnet format
-r('net = loadSBML("data/apoptosis.xml")')
+# Load SBML-qual file
+r('net <- loadSBML("data/apoptosis.xml")')
+
+# Print network info
+r('print(net)')
+
+# List all genes/nodes
+genes = list(r('net$genes'))
+print("Genes:", genes)
+
+# Show transition functions (Boolean rules)
+functions = r('net$functions')
+print("Transition functions:")
+for k, v in zip(functions.names, list(functions)):
+    print(f"{k}: {v}")
+
+# Find input nodes (cues/stimuli)
+inputs = list(r('setdiff(net$genes, unlist(lapply(net$functions, all.vars)))'))
+print("Inputs (cues/stimuli):", inputs)
+
+# Find output nodes (readouts)
+outputs = list(r('setdiff(net$genes, names(net$functions))'))
+print("Outputs (readouts):", outputs)
+
+# Find inhibitors: nodes that appear with a NOT (!) in any Boolean rule
+inhibitors = set()
+for rule in list(functions):
+    found = re.findall(r'!([A-Za-z0-9_]+)', rule)
+    inhibitors.update(found)
+print("Inhibitors (appear as !X in rules):", sorted(inhibitors))
+
+# Save as .bnet
 r('saveNetwork(net, "data/apoptosis.bnet")')
+print("Network saved as data/apoptosis.bnet")
 primes = FileExchange.bnet2primes("data/apoptosis.bnet")
 
 # 2. Generate synthetic data
