@@ -19,7 +19,8 @@ packages_to_install <- c(
     "CNORfuzzy",      # Fuzzy logic modeling
     "graph",          # Graph utilities
     "Rgraphviz",       # Graph visualization (if needed)
-    "Cairo"
+    "Cairo",
+    "BoolNet"
 )
 
 for (pkg in packages_to_install) {
