@@ -8,10 +8,7 @@ import os
 import sys
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
-import rpy2.robjects.numpy2ri
 
-# Activate automatic numpy to R conversion
-rpy2.robjects.numpy2ri.activate()
 
 class CellNOptAnalyzer:
     """
@@ -20,30 +17,25 @@ class CellNOptAnalyzer:
     
     def __init__(self):
         """Initialize the CellNOpt analyzer"""
-        try:
-            # Import required R packages
-            self.base = importr('base')
-            self.cellnoptr = importr('CellNOptR')
-            print("CellNOptR loaded successfully")
-        except Exception as e:
-            print(f"Error loading R packages: {e}")
-            print("Make sure you have installed CellNOptR in R:")
-            print("BiocManager::install('CellNOptR')")
-            sys.exit(1)
+        self.cellnoptr = importr('CellNOptR')
+        print("CellNOptR loaded successfully")
     
-    def load_network(self, sif_file):
+    def load_network(self, file, USE_SIF=False):
         """
-        Load a network from SIF file
+        Load a network from file
         Args:
-            sif_file (str): Path to SIF file
+            file (str): Path to file
         Returns:
             R object containing the network
         """
-        if not os.path.exists(sif_file):
-            raise FileNotFoundError(f"SIF file not found: {sif_file}")
-        
-        print(f"Loading network from {sif_file}")
-        robjects.r(f'pknmodel <- readSIF("{sif_file}")')
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"File not found: {file}")
+
+        print(f"Loading network from {file}")
+        if USE_SIF:
+            robjects.r(f'pknmodel <- readSIF("{file}")')
+        else:
+            robjects.r(f'pknmodel <- readSBMLQual("{file}")')
         return robjects.r('pknmodel')
     
     def load_data(self, midas_file):
@@ -76,11 +68,10 @@ class CellNOptAnalyzer:
         robjects.r(f'model <- readSBMLQual("{file}")')
         robjects.r(f'data(CNOlistPB, package="CNORdt")')
         if CNOlistPB is not None:
-            robjects.r(f'CNOlistPB <- readMIDAS("{CNOlistPB}")')
+            robjects.r(f'plotModel(model, filename="{output_file}", output="SVG")')
         else:
-            robjects.r('CNOlistPB <- CNOlist')
-            robjects.r(f'plotModel(model, CNOlistPB, filename="{output_file}", output="SVG")')
-    
+            robjects.r(f'plotModel(model, CNOlist, filename="{output_file}", output="SVG")')
+
     def preprocess_network(self):
         """
         Preprocess the network and data
@@ -131,12 +122,12 @@ class CellNOptAnalyzer:
         capture.output(print(opt_results), file="{output_dir}/optimization_summary.txt")
         ''')
     
-    def run_full_analysis(self, sif_file, midas_file, output_dir="output", 
+    def run_full_analysis(self, file, midas_file, output_dir="output", 
                          max_generations=500, population_size=50):
         """
         Run complete CellNOpt analysis pipeline
         Args:
-            sif_file (str): Path to SIF network file
+            file (str): Path to network file
             midas_file (str): Path to MIDAS data file
             output_dir (str): Output directory for results
             max_generations (int): Maximum generations for optimization
@@ -144,9 +135,13 @@ class CellNOptAnalyzer:
         """
         try:
             # Load network and data
-            self.load_network(sif_file)
+            USE_SIF = file.endswith('.sif')
+            self.load_network(file, USE_SIF)
             self.load_data(midas_file)
             
+            # Plot network
+            self.plot_network(file, CNOlist, output_file=file.split(".")[0])
+
             # Preprocess
             self.preprocess_network()
             
@@ -166,15 +161,15 @@ def main():
     """Example usage of CellNOptAnalyzer"""
     
     # Check if we have the required files
-    sif_file = "data/apoptosis.sif"
+    file = "data/apoptosis.xml"
     
     # For MIDAS file, you'll need to create or provide one
     # This is just an example - you'll need actual experimental data
     midas_file = "data/experimental_data.csv"  # You need to create this
     
-    if not os.path.exists(sif_file):
-        print(f"Example SIF file not found: {sif_file}")
-        print("Please make sure you have a network file in SIF format")
+    if not os.path.exists(file):
+        print(f"Example data file not found: {file}")
+        print("Please make sure you have a network file in XML format")
         return
     
     if not os.path.exists(midas_file):
@@ -188,7 +183,7 @@ def main():
     
     try:
         analyzer.run_full_analysis(
-            sif_file=sif_file,
+            file=file,
             midas_file=midas_file,
             output_dir="output/cellnopt_results",
             max_generations=100,  # Reduced for testing
