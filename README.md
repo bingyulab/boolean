@@ -4,6 +4,7 @@ A Boolean model implementation.
 
 ```
 salloc -N 1 -n 1 --exclusive
+salloc -N 1 -n 1 --exclusive -C skylake
 module load lang/Python/3.11.5-GCCcore-13.2.0
 module load lang/R/4.4.1-gfbf-2023b
 module load math/MATLAB/2024a-r6
@@ -17,18 +18,19 @@ CaSQ is available on PyPI and can be installed using pip:
 pip install casq
 pip install rpy2  # R interface for Python (recommended for CellNOpt)
 # pip install cellnopt.wrapper # cellnopt (alternative, but less reliable)
-pip install caspo joblib networkx numpy pandas pydot pyparsing scikit-learn scipy seaborn clingo #caspo
+pip install caspo joblib networkx numpy==1.25.2 pandas==1.4 pydot pyparsing scikit-learn scipy seaborn==0.11 matplotlib==3.8.4 clingo #caspo
 ```
 
 ### R Packages Installation (for CellNOpt)
 ```bash
 Rscript Install/install_cellnopt.R
 ```
-
+/home/users/bjiang/boolean/output/ModifiedToyModel_20.0%.RData
 ```bash
 https://github.com/sysbiolux/optPBN.git
 https://github.com/gingproc-IIM-CSIC/MEIGO64.git
 ```
+In CellNOpt, we need download CPLEX solver from IBM. You can download it from [IBM CPLEX](https://www.ibm.com/products/ilog-cplex-optimization-studio) and install it in the `~/CPLEX_Studio2211` directory. Make sure to set the environment variable `CPLEX_PATH` to point to the CPLEX installation directory.
 
 ```bash
 unzip optPBN_stand_alone_v2.2.3
