@@ -15,12 +15,21 @@ class CellNOptAnalyzer:
     A Python class to interface with CellNOpt R package using RPy2
     """
     
-    def __init__(self):
+    def __init__(self, file, midas_file=None):
         """Initialize the CellNOpt analyzer"""
         self.cellnoptr = importr('CellNOptR')
+        self.file = file
+        self.midas_file = midas_file
+        if file is None:
+            self.filename = "OriginalModel"
+        else:
+            self.filename = os.path.splitext(os.path.basename(file))[0]
+        self.output_file = "output/cellnopt"
+        if not os.path.exists(self.output_file):
+            os.makedirs(self.output_file, exist_ok=True)
         print("CellNOptR loaded successfully")
     
-    def load_network(self, file):
+    def load_network(self):
         """
         Load a network from file
         Args:
@@ -28,18 +37,21 @@ class CellNOptAnalyzer:
         Returns:
             R object containing the network
         """
-        print(f"Loading network from {file}")
-        if file is None:
+        print(f"Loading network from {self.file}")
+        if self.file is None:
             robjects.r(f'data(ToyModel, package="CellNOptR")')
             robjects.r('pknmodel <- ToyModel')
-        elif file.endswith('.sif'):
-            robjects.r(f'pknmodel <- readSIF("{file}")')
-        elif file.endswith('.xml'):
-            robjects.r(f'pknmodel <- readSBMLQual("{file}")')
-        
+        elif self.file.endswith('.sif'):
+            robjects.r(f'pknmodel <- readSIF("{self.file}")')
+        elif self.file.endswith('.xml'):
+            robjects.r(f'pknmodel <- readSBMLQual("{self.file}")')
+        elif self.file.endswith('.RData'):
+            robjects.r(f'load("{self.file}")')
+            robjects.r('pknmodel <- model')
+
         return robjects.r('pknmodel')
     
-    def load_data(self, midas_file, output_file="output/cellnopt/ModelGraph.pdf"):
+    def load_data(self):
         """
         Load experimental data from MIDAS file
         Args:
@@ -47,19 +59,20 @@ class CellNOptAnalyzer:
         Returns:
             R object containing the experimental data
         """        
-        print(f"Loading data from {midas_file}")
-        if midas_file is None:
+        output_file = os.path.join(self.output_file, f"{self.filename}_CNOlist.pdf")
+        print(f"Loading data from {self.midas_file}, and saving to {output_file}")
+        if self.midas_file is None:
             robjects.r(f'data(CNOlistToy, package="CellNOptR")')
             robjects.r('cnolist <- CNOlistToy')  
-            robjects.r(f'plotCNOlistPDF(CNOlist=cnolist,filename="{output_file}")')  # Example timepoints
+            robjects.r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
         else:  
             robjects.r(f'data <- readMIDAS("{midas_file}")')
             robjects.r(f'cnolist <- makecnolist(data, subfield=FALSE, verbose=FALSE)')  # Remove NA timepoints
             robjects.r('cnolist <- CNOlist(cnolist)')  
-            robjects.r(f'plotcnoplotCNOlistPDFlistPDF(CNOlist=cnolist,filename="{output_file}")')  # Example timepoints
+            robjects.r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
         return robjects.r('cnolist')
     
-    def plot_network(self, file, cnolistPB=None, output_file="output/cellnopt/network_plot.pdf"):
+    def plot_network(self, cnolistPB=None, output_file="output/cellnopt/network_plot"):
         """
         Plot the network and save to PDF
         Args:
@@ -67,11 +80,13 @@ class CellNOptAnalyzer:
         """
         import rpy2.robjects as robjects
         from rpy2.robjects.packages import importr
+        output_file = os.path.join(self.output_file, f"{self.filename}_network_plot")
+        print(f"Plotting network and saving to {output_file}")
         robjects.r(f'library(CellNOptR)')
         robjects.r(f'library(CNORdt)')
         robjects.r(f'library(Rgraphviz)')
         robjects.r(f'library(RBGL)')
-        robjects.r(f'model <- readSBMLQual("{file}")')
+        robjects.r(f'model <- readSBMLQual(file)')
         if cnolistPB is not None:
             robjects.r(f'plotModel(model, filename="{output_file}", output="SVG")')
         else:
@@ -87,13 +102,14 @@ class CellNOptAnalyzer:
             R object containing the preprocessed model
         """
         print("Preprocessing network...")
-        robjects.r('model <- preprocessing(data = cnolist, model = pknmodel, expansion=TRUE, compression=TRUE, cutNONC=TRUE, verbose=FALSE)')
+        robjects.r('model <- preprocessing(data = cnolist, model = pknmodel, expansion=FALSE, compression=TRUE, cutNONC=TRUE, verbose=TRUE)')
         return robjects.r('model')
 
-    def optimize_network(self, PLOT=True, method='ga', numSol=3, relGap=0.05, output_file="output/cellnopt/"):
+    def optimize_network(self, output_file, PLOT=True, method='ga', numSol=3, relGap=0.05):
         """
         Run Boolean network optimization
         Args:
+            output_file (str): Directory to save output files within method directory, different for self.output_file
             PLOT (bool): Whether to plot the results
             method (str): Optimization method to use ('ga' or 'ilp')
         Returns:
@@ -116,12 +132,12 @@ class CellNOptAnalyzer:
                 robjects.r(f'''
                     cutAndPlot(model=model, bStrings=list(opt_results$bString),
                         CNOlist=cnolist,plotPDF=TRUE);
-                    pdf("{output_file}/evolFitT1.pdf");
+                    pdf("{output_file}/{self.filename}_evolFitT1.pdf");
                     plotFit(optRes=opt_results);
                     dev.off();
                     plotModel(model, cnolist, bString=opt_results$bString);
                     bs <- mapBack(model, pknmodel, opt_results$bString);
-                    plotModel(pknmodel, cnolist, bs, compressed=model$speciesCompressed, output="SVG", filename="{output_file}/evolFitT1_{i}")                
+                    plotModel(pknmodel, cnolist, bs, compressed=model$speciesCompressed, output="SVG", filename="{output_file}/{self.filename}_evolFitT1_{i}.svg")                
                 ''')
         elif method == 'ilp':   
             cplexPath = "/home/users/bjiang/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex" 
@@ -155,7 +171,7 @@ class CellNOptAnalyzer:
             if PLOT:
                 robjects.r(f'''
                     cutAndPlot(CNOlist = cnolist, model = model, bStrings = list(opt_results$bitstringILP[[1]]), plotPDF=TRUE)
-                    plotModel(model, cnolist, bString=opt_results$bitstringILP[[1]], output="SVG", filename="{output_file}/ilpFitT1_1")
+                    plotModel(model, cnolist, bString=opt_results$bitstringILP[[1]], output="SVG", filename="{output_file}/{self.filename}_ilpFitT1_1.svg")
                 ''')
         return robjects.r('opt_results')      
     
@@ -183,15 +199,12 @@ class CellNOptAnalyzer:
         r('system.time({R6 <- crossvalidateBoolean(CNOlist = cnodata_prep, model = model, type="observable", nfolds=10, parallel = FALSE)})')
         print("Done.")
 
-    def save_results(self, output_dir="output/cellnopt/"):
+    def save_results(self, output_dir):
         """
         Save optimization results
         Args:
             output_dir (str): Output directory
         """
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        
         print(f"Saving results to {output_dir}/")
         # robjects.r(f'''
         #     writeScaffold(
@@ -237,8 +250,7 @@ class CellNOptAnalyzer:
                 namesData=list(CNOlist="cnolist",model="Model"))
         ''')
     
-    def run_full_analysis(self, file, midas_file, method="ga", output_dir="./output/cellnopt", 
-                          numSol=3, relGap=0.05,):
+    def run_full_analysis(self, method="ga", numSol=3, relGap=0.05,):
         """
         Run complete CellNOpt analysis pipeline
         Args:
@@ -249,65 +261,47 @@ class CellNOptAnalyzer:
             relGap (float): Relative gap for ILP optimization
         """
         # Load network and data
-        model = self.load_network(file)
-        cnolist = self.load_data(midas_file)
+        model = self.load_network()
+        cnolist = self.load_data()
         
-        # Plot network
-        if file is not None:
-            self.plot_network(file, cnolist, output_dir=file.split(".")[0])
-
         # Preprocess
         self.preprocess_network()
 
         # Optimize
-        output_file = os.path.join(output_dir, method)                
+        output_file = os.path.join(self.output_file, method)                
         os.makedirs(output_file, exist_ok=True)
         print(f"Optimizing with method: {method}")
         opt_results = self.optimize_network(PLOT=True, method=method,
                                 numSol=3, relGap=0.05, output_file=output_file)
 
         # Save results
-        self.save_results(output_dir)
+        self.save_results(output_file)
         
         print("Analysis completed successfully!")
         return model, cnolist, opt_results
 
-def main(Test=False, method="ga"):
+def main(file, midas_file=None, method="ga"):
     """Example usage of CellNOptAnalyzer"""
     
-    # Check if we have the required files
-    if Test:
-        file = None
-        midas_file = None  # For testing without MIDAS data
-    else:        
-        file = "data/apoptosis.xml"
-        # For MIDAS file, you'll need to create or provide one
-        # This is just an example - you'll need actual experimental data
-        midas_file = "data/experimental_data.csv"  # You need to create this
-    
-        if not os.path.exists(file):
-            print(f"Example data file not found: {file}")
-            print("Please make sure you have a network file in XML format")
-            return
-        
-        if not os.path.exists(midas_file):
-            print(f"MIDAS data file not found: {midas_file}")
-            print("You need to create experimental data in MIDAS format")
-            print("See CellNOpt documentation for format details")
-            return
-    
+    # file = "data/apoptosis.xml"
+    # For MIDAS file, you'll need to create or provide one
+    # This is just an example - you'll need actual experimental data
+    # midas_file = "data/experimental_data.csv"  # You need to create this
+
     # Create analyzer and run analysis
-    analyzer = CellNOptAnalyzer()
+    analyzer = CellNOptAnalyzer(
+        file=file,
+        midas_file=midas_file)
 
     model, cnolist, opt_results = analyzer.run_full_analysis(
-        file=file,
-        midas_file=midas_file,
         method=method,
-        output_dir="output/cellnopt_results",
         numSol=3,
         relGap=0.05
     )
     return model, cnolist, opt_results
 
 if __name__ == "__main__":
-    model, cnolist, opt_results = main(Test=True, method="ilp")
+    # model, cnolist, opt_results = main(Test=True, method="ilp")
+    model, cnolist, opt_results = main(
+        "./output/ModifiedToyModel_10.RData", 
+        midas_file=None, method="ilp")

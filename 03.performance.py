@@ -21,7 +21,7 @@ for change_percent in np.linspace(0, 1, 11)[1:-1]:
 res = {'ga': [], 'ilp': [], 'ess': [], 'vns': [], 'caspo': []}
 for change_percent in np.linspace(0, 1, 11)[-1]:
     if change_percent == 0:
-        file = "data/ToyModel.RData"
+        file = None
     else:
         file = f"output/ModifiedToyModel_{change_percent:.1%}.RData
     r(f'model <-load("output/ModifiedToyModel_{change_percent:.1%}.RData")')
@@ -46,7 +46,7 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
     print("Done.")
 
     # 2. MEIGO optimization (if available)
-    optimizer = MEIGOOptimizer()
+    optimizer = MEIGOOptimizer(file=file)
     optimizer.run_vns()
     optimizer.run_ess()
     vns_results = optimizer.get_vns_results()
@@ -64,7 +64,6 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
         file = "output/caspo/Toymodel.sif"
     else:
         file = f"output/caspo/ModifiedToyModel_{change_percent:.1%}.sif"
-        r(f'model.toSIF("{file}")')
     runner = CaspoOptimizer(
             pkn=file,
             midas="Toydata.midas",
