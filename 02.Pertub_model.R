@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 library(CellNOptR)
 library(here)
 source(here::here("tools", "functions.R"))
@@ -56,7 +58,8 @@ perturbModel <- function(model, change_percent=0.1) {
   n_nodes <- length(model$namesSpecies)
   n_perturb <- ceiling(change_percent * n_nodes)
   sel_nodes <- sample(n_nodes, n_perturb)
-  cat("Perturbing %d nodes out of %d (%.0f%%)\n", n_perturb, n_nodes, change_percent * 100)
+
+  message(sprintf("Perturbing %d nodes out of %d (%.0f%%)", n_perturb, n_nodes, change_percent * 100))
   for (i in sel_nodes) {
     node1 <- model$namesSpecies[i]
     x <- runif(1)
@@ -64,7 +67,7 @@ perturbModel <- function(model, change_percent=0.1) {
     ## 1) Operator insertion (≈1/3 of the time)
     if (x < 1/3) {
       # pick random other node
-      cat("Inserting operator for node %s\n", node1)
+      message(sprintf("Inserting operator for node %s", node1))
       j <- sample(setdiff(seq_len(n_nodes), i), 1)
       node2 <- model$namesSpecies[j]
       # choose operator type
@@ -79,28 +82,27 @@ perturbModel <- function(model, change_percent=0.1) {
       
     ## 2) Subtree deletion (≈1/3)
     } else if (x < 2/3) {
-      cat("Deleting subtree for node %s\n", node1)
+      message(sprintf("Deleting subtree for node %s", node1))
       # find all reactions involving node1
       cols <- which(grepl(node1, model$reacID, fixed=TRUE))
-
-      if (length(cols)>0) {
-        col <- sample(cols, 1)
-        rid <- model$reacID[col]
-        pr  <- parse_reac(rid)
-        # if it's a NOT-edge, zero out notMat; else zero interMat
-        if (pr$is_not && model$notMat[which(model$namesSpecies==pr$src),col]==1) {
-          # do nothing
-        } else {
-          # model <- remove_reaction(model, col)
-          # If I delete a reaction, there is chance that the model is inconsistent 
-          # after I save the SIF model. 
-          # So I'd rather do nothing here.
-        }
+      message(sprintf("Found %d reactions [%s] for node %s", length(cols), paste(model$reacID[cols], collapse=", "), node1))
+      if (length(cols) > 1) {
+          col <- sample(cols, 1)  # pick one at random
+          message(sprintf("Deleting reaction %s", model$reacID[col]))
+          rid <- model$reacID[col]
+          model <- remove_reaction(model, col)
+          # if (startsWith(rid, "!")) {
+          #     model$notMat[which(model$namesSpecies == pr$src), col] <- 0
+          # } else {
+          #     pr <- parse_reac(rid)
+          #     model$interMat[which(model$namesSpecies == pr$src), col] <- 0
+          #     model$interMat[which(model$namesSpecies == pr$tgt), col] <- 0
+          # }
       }
       
     ## 3) Operator exchange (≈1/3)
     } else {
-      cat("Exchanging operator for node %s\n", node1)
+      message(sprintf("Exchanging operator for node %s", node1))
 
       # pick inner coin
       xi <- runif(1)
@@ -181,12 +183,17 @@ perturbModel <- function(model, change_percent=0.1) {
 #------------------------------------------------------------------------------#
 runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="CellNOptR"); ToyModel },
                                CNOlist        = { data("CNOlistToy", package="CellNOptR"); CNOlistToy },
-                               change_pct     = 0.2,
+                               change_pct     = 0.9,
                                seed           = 42,
                                out_dir_sif    = "output/caspo",
                                out_dir_boolnet= "output/boolnet") {
   # 1) Perturb
   set.seed(seed)
+  cat(">> DEBUG: number of nodes available = ", length(orig_model$namesSpecies), "\n")
+  cat(">> DEBUG: change_pct = ", change_pct, "\n")
+  wanted_size <- floor(change_pct * length(orig_model$namesSpecies))
+  cat(">> DEBUG: computed size = ", wanted_size, "\n")
+  
   mod_model <- perturbModel(orig_model, change_pct)
   message(sprintf("Reactions before: %d", length(orig_model$reacID)))
   message(sprintf("Reactions after : %d\n",  length(mod_model$reacID)))
@@ -201,6 +208,11 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
   rdata_fname  <- file.path(out_dir_sif,     sprintf("ModifiedToyModel_%s.RData",pct_lbl))
   boolnet_fname<- file.path(out_dir_boolnet, sprintf("ModifiedToyModel_%s.txt",  pct_lbl))
   
+  # Print the result of ifelse for each reaction
+  for (i in seq_along(mod_model$reacID)) {
+    res <- ifelse(any(mod_model$notMat[, i] == 1), -1, 1)
+    cat(sprintf("Reaction %s: %d\n", mod_model$reacID[i], res))
+  }
   # 3) Save RData & SIF
   save(mod_model, file=rdata_fname)
   writeSIF(mod_model, file=sif_fname, overwrite=TRUE)
@@ -223,14 +235,64 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
                  boolnet_fname = boolnet_fname))
 }
 
+#--- Load required libraries -------------------------------------------------
+suppressPackageStartupMessages({
+  library(optparse)
+})
 
-results <- runPerturbPipeline(
-#                 orig_model      = myCustomModel,
-#                 CNOlist         = myCNOlist,
-                change_pct      = 0.3,
-#                 seed            = 123,
-#                 out_dir_sif     = "myoutputs/sif",
-#                 out_dir_boolnet = "myoutputs/boolnet"
+#--- Define command-line options ---------------------------------------------
+option_list <- list(
+  make_option(c("-m", "--model"), type="character", default=NULL,
+              help="Path to original model RData or RDS file", metavar="FILE"),
+  make_option(c("-c", "--cno"), type="character", default=NULL,
+              help="Path to CNOlist object (RDS)", metavar="FILE"),
+  make_option(c("-p", "--changePCT"), type="double", default=0.9,
+              help="Change percentage [default %default]", metavar="DOUBLE"),
+  make_option(c("-s", "--seed"), type="integer", default=44,
+              help="Random seed [optional]", metavar="INT"),
+  make_option(c("--outSIF"), type="character", default="outputs/sif",
+              help="Output directory for .sif files [default %default]", metavar="DIR"),
+  make_option(c("--outBoolNet"), type="character", default="outputs/boolnet",
+              help="Output directory for BoolNet files [default %default]", metavar="DIR")
 )
 
-print(results)
+parser <- OptionParser(option_list=option_list,
+                       description = "Run perturbation pipeline for a Boolean model")
+opt <- parse_args(parser)
+
+#--- Validate inputs ----------------------------------------------------------
+# if (is.null(opt$model)) {
+#   stop("Error: --model must be provided (path to your original model file).")
+# }
+# if (is.null(opt$cno)) {
+#   stop("Error: --cno must be provided (path to your CNOlist file).")
+# }
+
+#--- Load input objects ------------------------------------------------------
+# Assumes these files contain the needed R objects:
+#   - model loaded into variable 'myCustomModel'
+#   - CNOlist loaded into 'myCNOlist'
+# message("Loading model from: ", opt$model)
+# load(opt$model)        # e.g. loads `myCustomModel`
+# message("Loading CNOlist from: ", opt$cno)
+# myCNOlist <- readRDS(opt$cno)
+
+#--- (Optional) set seed -----------------------------------------------------
+if (!is.null(opt$seed)) {
+  set.seed(opt$seed)
+  message("Random seed set to: ", opt$seed)
+}
+
+#--- Run the pipeline --------------------------------------------------------
+if (is.null(opt$model)) {  
+  results <- runPerturbPipeline(
+    change_pct      = opt$changePCT,
+  )
+} else {    
+  results <- runPerturbPipeline(
+    orig_model      = myCustomModel,
+    CNOlist         = myCNOlist,
+    change_pct      = opt$changePCT,
+  )
+}
+

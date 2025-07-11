@@ -65,25 +65,32 @@ class MEIGOOptimizer:
         shutil.move(filepath, os.path.join(new_dir, f'{filename}_{method}_report.RData'))
 
     def run_vns(self):
-        r('''
-        get_fobj <- function(cnolist, model){
-            f <- function(x, model1=model, cnolist1=cnolist){
-                simlist = prep4sim(model1)
-                score = computeScoreT1(cnolist1, model1, x)
-                return(score)
+        
+        r('library(here)')
+        r('source(here::here("tools", "functions.R"))')   
+        
+        r(f'''
+            get_fobj <- function(cnolist, model){
+                f <- function(x, model1=model, cnolist1=cnolist){
+                    simlist = prep4sim(model1)
+                    score = computeScoreT1(cnolist1, model1, x)
+                    return(score)
+                }
+                return(f)
             }
-            return(f)
-        }
-        fobj <- get_fobj(cnolist, model)
-        nvar <- 16
-        problem <- list(f=fobj, x_L=rep(0, nvar), x_U=rep(1, nvar))
-        opts <- list(maxeval=2000, maxtime=30, use_local=1,
-            aggr=0, local_search_type=1, decomp=1, maxdist=0.5, save_results=1)
-        Results <- MEIGO(problem, opts, "VNS")
-        assign("Results_VNS", Results, envir = .GlobalEnv)
-        optModel <- cutModel(model, Results$xbest)
-        plotModel(optModel,cnolist)
-        assign("optModel_VNS", optModel, envir = .GlobalEnv)
+            fobj <- get_fobj(cnolist, model)
+            nvar <- 16
+            problem <- list(f=fobj, x_L=rep(0, nvar), x_U=rep(1, nvar))
+            opts <- list(maxeval=2000, maxtime=30, use_local=1,
+                aggr=0, local_search_type=1, decomp=1, maxdist=0.5, save_results=1)
+            Results_VNS <- MEIGO(problem, opts, "VNS")
+            optModel <- cutModel(model, Results_VNS$xbest)
+            plotModel(optModel,cnolist)
+            assign("optModel_VNS", optModel, envir = .GlobalEnv)
+            simResults <- simulate_CNO(model=model,#_orig,
+                                CNOlist=cnolist,
+                                bString=optModel$xbest)
+            save(res,file=paste("{output_file}/{self.filename}_evolSimRes.RData",sep=""))                    
         ''')
         print("VNS optimization completed.")
         MEIGOOptimizer._save_results(self.filename,"VNSR")
@@ -101,7 +108,7 @@ class MEIGOOptimizer:
         opts <- list(maxeval=100, local_solver=0, ndiverse=10, dim_refset=6, save_results=1)
         Results_ESS <- MEIGO(problem, opts, algorithm="ESS")
         opt_pars <- initial_pars;
-        opt_pars$parValues <- Results$xbest;
+        opt_pars$parValues <- Results_ESS$xbest;
         simData <- plotLBodeFitness(cnolist, model,opt_pars,
         reltol = 1e-05, atol = 1e-03, maxStepSize = 0.01)
         assign("optModel_ESS", Results_ESS, envir = .GlobalEnv)
@@ -109,6 +116,46 @@ class MEIGOOptimizer:
         print("ESS optimization completed.")
         MEIGOOptimizer._save_results(self.filename,"eSSR")
 
+    def evaluate_model(self, output_dir):
+        print("Evaluating model...")
+        r('library(here)')
+        r('source(here::here("tools", "comparison.R"))')      
+        
+        ori_fname = os.path.join(output_dir, f"{self.filename}.txt")
+        opt_fname = os.path.join(output_dir, f"OPT_{self.filename}.txt")
+        r(f'''
+          res <- compareNetworks(origFile = {ori_fname}, modifiedFiles = list({opt_fname}))
+          ''')
+        res = r['res']
+
+        from tools.functions import rlist_to_pydict
+        result_dict = rlist_to_pydict(res)
+        # Now result_dict is a Python dictionary
+        return result_dict
+    
+    def save_results(self, output_dir):
+        print(f"Saving results to {output_dir}/")        
+        r('library(here)')
+        r('source(here::here("tools", "functions.R"))')
+        sif_fname = os.path.join(output_dir, f"OPT_{self.filename}.sif")
+        rdata_fname = os.path.join(output_dir, f"OPT_{self.filename}.RData")
+        boolnet_fname = os.path.join(output_dir, f"OPT_{self.filename}.txt")
+        robjects.r(f'''
+            save(optModel, file={rdata_fname})
+            writeSIF(optModel, file={sif_fname}, overwrite=TRUE)
+            message("Wrote:\n - RData → ", {rdata_fname}, "\n - SIF   → ", {sif_fname}, "\n")
+        ''')
+        robjects.r(f'''            
+            SIFToBoolNet(sifFile     = {sif_fname},
+                        boolnetFile = {boolnet_fname},
+                        CNOlist     = CNOlist,
+                        model       = optModel,
+                        fixInputs   = TRUE,
+                        preprocess  = TRUE,
+                        ignoreAnds  = TRUE)
+            message("BoolNet file written to: ", {boolnet_fname})
+        ''')
+        
     def get_vns_results(self):
         # Retrieve VNS results from R
         return r('Results_VNS')
