@@ -4,21 +4,37 @@ from rpy2.robjects import r
 from tools.cellnopt2py import CellNOptOptimizer
 from tools.meigo import MEIGOOptimizer
 from tools.caspo import CaspoOptimizer
+import subprocess
 
 
 # Load the ToyModel data
-
 # Load the modified model back into Python if needed
 r('data("ToyModel", package="CellNOptR")')
 r('model <- ToyModel')
 
 # Parameters
 for change_percent in np.linspace(0, 1, 11)[1:-1]:
-    print(f"Modifying model with {change_percent:.1%} perturbation...")
-    # Modify the model with a x% perturbation
-    modify_model(change_percent=change_percent)
+    print(f"Modifying model with {change_percent:.1%} perturbation...")d
+        
+    sif_fname = f"output/sif/ModifiedToyModel_{change_percent:.1%}.sif"
+    rdata_fname = f"output/sif/ModifiedToyModel_{change_percent:.1%}.RData"
+    boolnet_fname = f"output/boolnet/ModifiedToyModel_{change_percent:.1%}.txt"
+    
+    r_script = "02.Pertub_model.R"
 
-res = {'ga': [], 'ilp': [], 'ess': [], 'vns': [], 'caspo': []}
+    completed = subprocess.run(
+        ["Rscript", r_script, "-p", str(change_percent)],
+        capture_output=True,
+        text=True
+    )
+        
+    print("Return code:", completed.returncode)
+    print("STDOUT:")
+    print(completed.stdout)
+    print("STDERR:")
+    print(completed.stderr)
+
+res = {'ga': [], 'ilp': [],  'vns': [], 'caspo': []}
 for change_percent in np.linspace(0, 1, 11)[-1]:
     if change_percent == 0:
         file = None
@@ -48,15 +64,18 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
     # 2. MEIGO optimization (if available)
     optimizer = MEIGOOptimizer(file=file)
     optimizer.run_vns()
-    optimizer.run_ess()
     vns_results = optimizer.get_vns_results()
-    ess_results = optimizer.get_ess_results()
-    print("VNS and ESS optimization completed in R via rpy2.")
-    print("VNS Results:", vns_results)
-    print("ESS Results:", ess_results)
     
-    res['ess'].append(ess_results)
+    print("VNS optimization completed in R via rpy2.")
+    print("VNS Results:", vns_results)
     res['vns'].append(vns_results)
+    
+    # optimizer.run_ess()
+    # ess_results = optimizer.get_ess_results()
+    # print("ESS optimization completed in R via rpy2.")
+    # print("ESS Results:", ess_results)
+    
+    # res['ess'].append(ess_results)
     print("MEIGO VNS and ESS optimization completed in R via rpy2.")
 
     # 3. Caspo optimization (if available)

@@ -112,3 +112,162 @@ SIFToBoolNet <- function(sifFile, boolnetFile, CNOlist, model=NULL, fixInputs=TR
 # CNOl <- makeCNOlist(readMIDAS(midasFile),subfield=FALSE)
 # SIFToBoolNet(sifFile, "model_draft.txt", CNOl, fixInputs=fixInputs, preprocess=preprocess)
   
+
+simulate_CNO <- function(model, bString, simList=NULL, CNOlist, indexList=NULL)
+{
+
+    if ((class(CNOlist)=="CNOlist")==FALSE){
+        CNOlist = CellNOptR::CNOlist(CNOlist)
+    } 
+    if (is.null(simList)==TRUE){
+        simList <- prep4sim(model)
+    }
+    if (is.null(indexList)==TRUE){
+        indexList = indexFinder(CNOlist, model)
+    }
+
+    # keep simList and indxList for back compatibility ?
+    modelCut <- cutModel(model, bString)
+    simListCut <- cutSimList(simList, bString)
+
+    # t0
+    Sim0 <- simulatorT0(CNOlist=CNOlist, model=modelCut, simList=simListCut, indexList=indexList)
+    #Sim0[,indexList$inhibited] <- 1 - Sim0[,indexList$inhibited]
+    simRes0 <- as.matrix(Sim0[,indexList$signals])
+
+    # t1
+    Sim <- simulatorT1(CNOlist=CNOlist, model=modelCut, simList=simListCut, indexList=indexList)
+    #Sim[,indexList$inhibited] <- 1 - Sim[,indexList$inhibited]
+    
+    colnames(Sim) <- model$namesSpecies
+    simRes <- as.matrix(Sim[,indexList$signals])
+
+    sig <- #as.matrix(Sim[,c(indexList$stimulated,indexList$inhibited)])
+              as.matrix(Sim[,c(indexList$stimulated,indexList$inhibited)])
+    
+    simResults <- list(input=CNOlist@cues,
+                       t0=simRes0, t1=simRes, trueSig=CNOlist@signals[[2]])
+
+    return(simResults)
+}
+
+
+pkn2sif<-function(model,optimRes=NA,writeSif=FALSE, filename="Model"){
+	
+  if (is.na(optimRes[1])){
+    BStimes<-rep(1,length(model$reacID))
+  }else{
+    BStimes<-optimRes$bString
+  }	
+
+	findOutput<-function(x){
+		sp<-which(x == 1)
+		sp<-model$namesSpecies[sp]
+		}
+		
+	reacOutput<-apply(model$interMat,2,findOutput)
+	
+	findInput<-function(x){
+		sp<-which(x == -1)
+		sp<-model$namesSpecies[sp]
+		}
+		
+	reacInput<-apply(model$interMat,2,findInput)
+		
+#if the class of reacInput is not a list, then there are no AND gates
+	if(!is(reacInput,"list")){
+	
+		isNeg<-function(x){
+			isNegI<-any(x == 1)
+			return(isNegI)
+			}
+		
+    if (all(model$notMat == 0)) {
+      # No negative connections: all are positive
+      inpSign <- rep(1, ncol(model$interMat))
+    } else {
+      inpSign <- apply(model$notMat, 2, isNeg)
+      inpSign <- !inpSign
+      inpSign[inpSign] <- 1
+      inpSign[!inpSign] <- -1
+    }
+    
+		sifFile<-cbind(reacInput,inpSign,reacOutput)
+    sifFile<-sifFile[BStimes==1,]
+		colnames(sifFile)=NULL
+    rownames(sifFile)=NULL
+    
+		}else{
+		
+#in this case there are AND gates and so we need to create dummy "and#" nodes
+			sifFile<-matrix(ncol=3)
+			nANDs<-1
+			for(i in 1:length(reacOutput)){
+			  if (BStimes[i]==1){
+
+				  if(length(reacInput[[i]]) == 1){
+            tmp<-matrix(0,nrow=1,ncol=3)
+					  tmp[1,1]<-reacInput[[i]]
+					  tmp[1,3]<-reacOutput[i]
+					  tmp[1,2]<-ifelse(
+						  any(model$notMat[,i] == 1),-1,1)
+              sifFile<-rbind(sifFile,tmp)
+          
+					}else{
+					
+						for(inp in 1:length(reacInput[[i]])){
+              tmp<-matrix(0,nrow=1,ncol=3)
+							tmp[1,1]<-reacInput[[i]][inp]
+							tmp[1,3]<-paste("and",nANDs,sep="")
+							tmp[1,2]<-ifelse(
+								model$notMat[which(reacInput[[i]][inp]==rownames(model$notMat)),i] == 1,
+								-1,1)
+              sifFile<-rbind(sifFile,tmp)
+							}
+						tmp<-matrix(0,nrow=1,ncol=3)	
+						tmp[1,1]<-paste("and",nANDs,sep="")
+						tmp[1,3]<-reacOutput[i]
+						tmp[1,2]<-1
+            sifFile<-rbind(sifFile,tmp)
+						
+            nANDs<-nANDs+1
+            }
+			    }
+				}
+				
+      sifFile<-sifFile[2:dim(sifFile)[1],]
+			
+			}
+
+#this is the edge attribute matrix that contains, for each edge, whether it is
+#absent from the model (0), present at t1(1) or present at t2(2)
+  if (writeSif==TRUE){
+	filename<-paste(filename, ".sif", sep="")
+    writeSIF(sifFile, filename=filename)
+  }
+
+  return(sifFile)
+}
+
+toSIF <- function(model, filename, overwrite=FALSE){
+
+    # convert internal model structure to a SIF matrix
+    sif = pkn2sif(model)
+
+    # and save it into a file
+    if (file.exists(filename)==FALSE){
+        write.table(sif[,1:3],file=filename,
+            row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+    }
+    else{
+       if (overwrite==TRUE){
+            write.table(sif[,1:3],file=filename,
+                row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+        }
+        else{
+           stop(paste("File ", filename, "already exists.",  sep=""))
+        }
+    }
+
+
+}
