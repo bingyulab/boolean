@@ -10,7 +10,7 @@ source(here::here("tools", "functions.R"))
 #' @param change_percent  A number in [0,1].  Fraction of nodes to perturb.
 #' @return  A modified copy of `model`
 
-perturbModel <- function(model, change_percent=0.1) {
+perturbModel <- function(model, cnolist, change_percent=0.1) {
   # Helper to add a new reaction column
   add_reaction <- function(mod, new_id, src, tgt, is_not=FALSE) {
     # skip if already present
@@ -55,10 +55,29 @@ perturbModel <- function(model, change_percent=0.1) {
     list(src=parts[1], tgt=parts[2], is_not=neg)
   }
 
+  check_and_reverse_stimuli_edges <- function(src, tgt, cnolist) {
+    stimuli <- cnolist$namesStimuli
+    message(sprintf("Checking edge: %s → %s in %s", src, tgt, stimuli))
+    # If target is a stimulus and source is not, reverse the edge
+    if (tgt %in% stimuli && !(src %in% stimuli)) {
+      # Reverse edge: stimulus should be source, not target
+      message(sprintf("Reversing edge: %s → %s", tgt, src))
+      return(list(src = tgt, tgt = src, reversed = TRUE))
+    }
+    # If both are stimuli, suggest connecting to a signal instead
+    if (src %in% stimuli && tgt %in% stimuli) {
+      signal <- sample(cnolist$namesSignals, 1)
+      message(sprintf("Connecting stimuli %s and %s to signal %s", src, tgt, signal))
+      return(list(src = src, tgt = signal, replaced = TRUE))
+    }
+    # Otherwise, keep edge as is
+    return(list(src = src, tgt = tgt, unchanged = TRUE))
+  }
+
   n_nodes <- length(model$namesSpecies)
   n_perturb <- ceiling(change_percent * n_nodes)
   sel_nodes <- sample(n_nodes, n_perturb)
-
+  
   message(sprintf("Perturbing %d nodes out of %d (%.0f%%)", n_perturb, n_nodes, change_percent * 100))
   for (i in sel_nodes) {
     node1 <- model$namesSpecies[i]
@@ -73,10 +92,18 @@ perturbModel <- function(model, change_percent=0.1) {
       # choose operator type
       op <- sample(c("NOT","AND","OR"),1)
       if (op == "NOT") {
-        new_id <- sprintf("!%s=%s", node1, node2)
+        message(sprintf("Working on case 1, subcase A"))
+        rel <- check_and_reverse_stimuli_edges(node1, node2, cnolist)
+        new_id <- sprintf("!%s=%s", rel$src, rel$tgt)
+        i <- which(model$namesSpecies == rel$src)
+        j <- which(model$namesSpecies == rel$tgt)
         model <- add_reaction(model, new_id, src=i, tgt=j, is_not=TRUE)
       } else {
-        new_id <- sprintf("%s=%s", node1, node2)
+        message(sprintf("Working on case 1, subcase B"))
+        rel <- check_and_reverse_stimuli_edges(node1, node2, cnolist)        
+        new_id <- sprintf("%s=%s", rel$src, rel$tgt)
+        i <- which(model$namesSpecies == rel$src)
+        j <- which(model$namesSpecies == rel$tgt)
         model <- add_reaction(model, new_id, src=i, tgt=j, is_not=FALSE)
       }
       
@@ -106,65 +133,58 @@ perturbModel <- function(model, change_percent=0.1) {
 
       # pick inner coin
       xi <- runif(1)
+      pos_cols <- which(!startsWith(model$reacID, "!") & startsWith(model$reacID, node1))
+      neg_cols <- which(startsWith(model$reacID, "!") & startsWith(sub("^!", "", model$reacID), node1))
+      if (length(pos_cols) >= 1 && length(neg_cols) >= 1) {
+
+        # Case 1: Both positive and negative relations exist
+        c_pos <- sample(pos_cols,1)
+        c_neg <- sample(neg_cols,1)
+        rid_pos <- model$reacID[c_pos]
+        rid_neg <- model$reacID[c_neg]          
+        # remove both
+        model <- remove_reaction(model, c_neg)
+        model <- remove_reaction(model, c_pos)
+        # rel1 ← "!" + rel2
+        new_rel1 <- paste0("!", rid_pos)
+        # rel2 ← "rel1"  (i.e. the positive of rid_neg)
+        new_rel2 <- sub("^!", "", rid_neg)
+        # insert them
+        pr1 <- parse_reac(rid_pos)  # first node info
+        pr2 <- parse_reac(rid_neg)  # second node info
+        # new_rel1 on first node
+        src1 <- which(model$namesSpecies==pr1$src)
+        tgt1 <- which(model$namesSpecies==pr1$tgt)
+        model <- add_reaction(model, new_rel1, src=src1, tgt=tgt1, is_not=TRUE)
+        # new_rel2 on first↔second of original neg
+        src2 <- which(model$namesSpecies==pr2$src)
+        tgt2 <- which(model$namesSpecies==pr2$tgt)
+        model <- add_reaction(model, new_rel2, src=src2, tgt=tgt2, is_not=FALSE)
       
-      # --- subcase A: xi < 0.5 ---------------------------------------------
-      if (xi < 0.5) {
-        # pick one positive relation (no "!") and one negative ("!")
-        pos_cols <- which(!startsWith(model$reacID, "!"))
-        neg_cols <- which(startsWith(model$reacID, "!"))
-        if (length(pos_cols)>0 && length(neg_cols)>0) {
-          c_pos <- sample(pos_cols,1)
-          c_neg <- sample(neg_cols,1)
-          rid_pos <- model$reacID[c_pos]
-          rid_neg <- model$reacID[c_neg]          
-          # remove both
-          model <- remove_reaction(model, c_neg)
-          model <- remove_reaction(model, c_pos)
-          # rel1 ← "!" + rel2
-          new_rel1 <- paste0("!", rid_pos)
-          # rel2 ← "rel1"  (i.e. the positive of rid_neg)
-          new_rel2 <- sub("^!", "", rid_neg)
-          # insert them
-          pr1 <- parse_reac(rid_pos)  # first node info
-          pr2 <- parse_reac(rid_neg)  # second node info
-          # new_rel1 on first node
-          src1 <- which(model$namesSpecies==pr1$src)
-          tgt1 <- which(model$namesSpecies==pr1$tgt)
-          model <- add_reaction(model, new_rel1, src=src1, tgt=tgt1, is_not=TRUE)
-          # new_rel2 on first↔second of original neg
-          src2 <- which(model$namesSpecies==pr2$src)
-          tgt2 <- which(model$namesSpecies==pr2$tgt)
-          model <- add_reaction(model, new_rel2, src=src2, tgt=tgt2, is_not=FALSE)
-        }
+      } else if (length(pos_cols) >= 1 && length(neg_cols) == 0) {
+        # Case 2: Only positive relations exist
+        c_pos <- sample(pos_cols, 1)
+        rid_pos <- model$reacID[c_pos]
+        model <- remove_reaction(model, c_pos)
+        new_rel <- paste0("!", rid_pos)
+        pr <- parse_reac(rid_pos)
+        src <- which(model$namesSpecies == pr$src)
+        tgt <- which(model$namesSpecies == pr$tgt)
+        model <- add_reaction(model, new_rel, src=src, tgt=tgt, is_not=TRUE)
         
-      # --- subcase B: xi >= 0.5 --------------------------------------------
-      } else {
-        # pick a normal relation (no "!")
-        cols <- which(!startsWith(model$reacID,"!"))
-        if (length(cols)>0) {
-          col <- sample(cols,1)
-          rid <- model$reacID[col]
-          pr  <- parse_reac(rid)
-          # remove it
-          model <- remove_reaction(model, col)
-          # decide swap direction based on src/tgt
-          if (startsWith(pr$src, "1")) {
-            # src was of form "1", so we treat via NOT-mat
-            new_r <- sprintf("!%s=%s", pr$tgt, pr$src)
-            j <- which(model$namesSpecies==pr$tgt)
-            k <- which(model$namesSpecies==pr$src)
-            model <- add_reaction(model, new_r, src=j, tgt=k, is_not=TRUE)
-          } else {
-            # simple edge swap
-            new_r <- sprintf("%s=%s", pr$tgt, pr$src)
-            j <- which(model$namesSpecies==pr$tgt)
-            k <- which(model$namesSpecies==pr$src)
-            model <- add_reaction(model, new_r, src=j, tgt=k, is_not=FALSE)
-          }
-        }
+      } else if (length(pos_cols) == 0 && length(neg_cols) >= 1) {
+        # Case 3: Only negative relations exist
+        c_neg <- sample(neg_cols, 1)
+        rid_neg <- model$reacID[c_neg]
+        model <- remove_reaction(model, c_neg)
+        new_rel <- sub("^!", "", rid_neg)
+        pr <- parse_reac(rid_neg)
+        src <- which(model$namesSpecies == pr$src)
+        tgt <- which(model$namesSpecies == pr$tgt)
+        model <- add_reaction(model, new_rel, src=src, tgt=tgt, is_not=FALSE)
       }
     }
-  }  
+  }
   return(model)
 }
 
@@ -182,7 +202,7 @@ perturbModel <- function(model, change_percent=0.1) {
 #' @return              A list with elements `mod_model`, `sif_fname`, `rdata_fname`, `boolnet_fname`.
 #------------------------------------------------------------------------------#
 runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="CellNOptR"); ToyModel },
-                               CNOlist        = { data("CNOlistToy", package="CellNOptR"); CNOlistToy },
+                               cnolist        = { data("CNOlistToy", package="CellNOptR"); CNOlistToy },
                                change_pct     = 0.9,
                                seed           = 42,
                                out_dir_sif    = "output/caspo",
@@ -194,7 +214,7 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
   wanted_size <- floor(change_pct * length(orig_model$namesSpecies))
   cat(">> DEBUG: computed size = ", wanted_size, "\n")
   
-  mod_model <- perturbModel(orig_model, change_pct)
+  mod_model <- perturbModel(orig_model, cnolist, change_pct)
   message(sprintf("Reactions before: %d", length(orig_model$reacID)))
   message(sprintf("Reactions after : %d\n",  length(mod_model$reacID)))
   
@@ -203,10 +223,10 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
   dir.create(out_dir_boolnet,  showWarnings=FALSE, recursive=TRUE)
   
   # Filenames
-  pct_lbl      <- sprintf("%.0f%%", change_pct*100)
+  pct_lbl      <- sprintf("%.0f", change_pct*100)
   sif_fname    <- file.path(out_dir_sif,     sprintf("ModifiedToyModel_%s.sif",  pct_lbl))
   rdata_fname  <- file.path(out_dir_sif,     sprintf("ModifiedToyModel_%s.RData",pct_lbl))
-  boolnet_fname<- file.path(out_dir_boolnet, sprintf("ModifiedToyModel_%s.txt",  pct_lbl))
+  boolnet_fname<- file.path(out_dir_boolnet, sprintf("ModifiedToyModel_%s.bnet",  pct_lbl))
   
   # Print the result of ifelse for each reaction
   for (i in seq_along(mod_model$reacID)) {
@@ -214,6 +234,7 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
     cat(sprintf("Reaction %s: %d\n", mod_model$reacID[i], res))
   }
   # 3) Save RData & SIF
+  message(mod_model)
   save(mod_model, file=rdata_fname)
   writeSIF(mod_model, file=sif_fname, overwrite=TRUE)
   message("Wrote:\n - RData → ", rdata_fname, "\n - SIF   → ", sif_fname, "\n")
@@ -221,9 +242,9 @@ runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="Cell
   # 4) Convert to BoolNet format
   SIFToBoolNet(sifFile     = sif_fname,
                boolnetFile = boolnet_fname,
-               CNOlist     = CNOlist,
+               CNOlist     = cnolist,
                model       = orig_model,
-               fixInputs   = TRUE,
+               fixInputs   = FALSE,
                preprocess  = TRUE,
                ignoreAnds  = TRUE)
   message("BoolNet file written to: ", boolnet_fname)

@@ -82,11 +82,22 @@ compare_attractors <- function(original_attractors, modified_attractors) {
     f1 <- if (is.na(precision) || is.na(recall) || (precision + recall) == 0) NA else 2 * precision * recall / (precision + recall)
     accuracy <- (tp + tn) / (tp + fp + fn + tn)
     c(precision=precision, recall=recall, f1=f1, accuracy=accuracy)
-  }))
+  }))  
+
+  # Transform each row into dictionary-like string: name1=val1|name2=val2|...
+  attractor_to_string <- function(att_list) {
+    sapply(att_list[1:n], function(x) {
+      paste(paste0(names(x), "=", as.numeric(x)), collapse="|")
+    })
+  }
+  ori_attractor <- attractor_to_string(original_attractors)
+  candidate_attractor <- attractor_to_string(modified_attractors)
   
   # Combine results
   result <- data.frame(
     attractor=1:n,
+    ori_attractor = ori_attractor,
+    candidate_attractor = candidate_attractor,
     hamming=hamming,
     norm_hamming=norm_hamming_orig,
     precision=metrics[, "precision"],

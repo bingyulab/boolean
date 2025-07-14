@@ -34,7 +34,7 @@ for change_percent in np.linspace(0, 1, 11)[1:-1]:
     print("STDERR:")
     print(completed.stderr)
 
-res = {'ga': [], 'ilp': [],  'vns': [], 'caspo': []}
+df = pd.DataFrame()
 for change_percent in np.linspace(0, 1, 11)[-1]:
     if change_percent == 0:
         file = None
@@ -49,7 +49,7 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
     analyzer = CellNOptAnalyzer()
 
     for method in ["ga", "ilp"]:
-        model, CNOlist, opt_results = analyzer.run_full_analysis(
+        model, CNOlist, results = analyzer.run_full_analysis(
             file=file,
             midas_file=midas_file,
             method=method,
@@ -57,7 +57,8 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
             numSol=3,
             relGap=0.05
         )
-        res[method].append(opt_results[method])
+        results["method"] = method
+        df = pd.concat([df, results], ignore_index=True)
         
     print("Done.")
 
@@ -68,14 +69,15 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
     
     print("VNS optimization completed in R via rpy2.")
     print("VNS Results:", vns_results)
-    res['vns'].append(vns_results)
-    
+    vns_results["method"] = "VNS"
+    df = pd.concat([df, vns_results], ignore_index=True)
+
     # optimizer.run_ess()
     # ess_results = optimizer.get_ess_results()
     # print("ESS optimization completed in R via rpy2.")
     # print("ESS Results:", ess_results)
-    
-    # res['ess'].append(ess_results)
+
+    # df['ess'].append(ess_results)
     print("MEIGO VNS and ESS optimization completed in R via rpy2.")
 
     # 3. Caspo optimization (if available)
@@ -92,5 +94,9 @@ for change_percent in np.linspace(0, 1, 11)[-1]:
     runner.run()
         
     print(f"Caspo best score: {caspo_score}")
-    res['caspo'].append(caspo_score)
+    vns_results["method"] = "VNS"
+    df = pd.concat([df, vns_results], ignore_index=True)
     print("Comparison complete.")
+    
+    
+    df["ChangePT"] = change_percent

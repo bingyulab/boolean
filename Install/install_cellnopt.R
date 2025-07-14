@@ -21,7 +21,8 @@ packages_to_install <- c(
     "Rgraphviz",       # Graph visualization (if needed)
     "Cairo",
     "BoolNet",
-    "here"
+    "here",
+    "optparse",
 )
 
 for (pkg in packages_to_install) {

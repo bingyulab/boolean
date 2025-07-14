@@ -1,6 +1,5 @@
 library(CellNOptR)
 
-
 SIFToBoolNet <- function(sifFile, boolnetFile, CNOlist, model=NULL, fixInputs=TRUE, preprocess=TRUE, ignoreAnds=TRUE)
 {
   if (preprocess)
@@ -11,7 +10,7 @@ SIFToBoolNet <- function(sifFile, boolnetFile, CNOlist, model=NULL, fixInputs=TR
       sif = model
     sif <- preprocessing(data=CNOlist, model=sif)
     system("rm tmp.sif")
-    writeSIF(sif,file="tmp.sif")
+    writeSIF(sif,file="tmp.sif", overwrite=TRUE)
     sifFile <- "tmp.sif"
   }
     
