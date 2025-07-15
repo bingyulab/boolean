@@ -7,12 +7,12 @@ CaSQ is available on PyPI and can be installed using pip:
 pip install -r requirements.txt
 ```
 
-### R Packages Installation (for CellNOpt)
+### R Packages Installation
 ```bash
-Rscript Install/install_cellnopt.R
+Rscript Install/install.R
 ```
 
-In CellNOpt, we need download CPLEX solver from IBM. You can download it from [IBM CPLEX](https://www.ibm.com/products/ilog-cplex-optimization-studio) and install it in the `~/CPLEX_Studio2211` directory. Make sure to set the environment variable `CPLEX_PATH` to point to the CPLEX installation directory.
+Note, in CellNOpt, we need download CPLEX solver from IBM. You can download it from [IBM CPLEX](https://www.ibm.com/products/ilog-cplex-optimization-studio) and install it in the `~/CPLEX_Studio2211` directory. Make sure to set the environment variable `CPLEX_PATH` to point to the CPLEX installation directory.
 
 ## Matlab Installation
 ```bash
