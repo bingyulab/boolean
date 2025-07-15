@@ -36,7 +36,7 @@ A critical methodological issue emerged regarding attractor comparison when reco
 
 The fundamental question of whether our experimental design captures biologically meaningful reconstruction scenarios required careful consideration. The approach of systematic PKN perturbation while maintaining constant experimental data reflects realistic conditions where prior knowledge contains errors or incompleteness.
 
-**Pierre's recommendation**: Implementing CANTATA-style approach which is based on cross-validation of reconstructed models against held-out experimental observations.  
+**Pierre's recommendation**: Implementing CANTATA-style approach which is based on cross-validation of reconstructed models against held-out experimental observations. Actually, this method does not compare the difference between attractors.
 
 This method will provide a more robust assessment of model validity by evaluating how well reconstructed models predict unseen data. But it cannot solve above challenges.
 
