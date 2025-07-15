@@ -1,0 +1,14 @@
+casq
+rpy2
+caspo
+joblib
+networkx
+numpy==1.25.2
+pandas==1.4
+pydot
+pyparsing
+scikit-learn
+scipy
+seaborn==0.11
+matplotlib==3.8.4
+clingo
