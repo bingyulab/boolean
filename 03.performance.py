@@ -1,29 +1,19 @@
-import rpy2.robjects as ro
-from rpy2.robjects.packages import importr
-from rpy2.robjects import r
 from tools.cellnopt2py import CellNOptOptimizer
 from tools.meigo import MEIGOOptimizer
 from tools.caspo import CaspoOptimizer
 import subprocess
+import os 
 
+dataset = "toy" 
 
-# Load the ToyModel data
-# Load the modified model back into Python if needed
-r('data("ToyModel", package="CellNOptR")')
-r('model <- ToyModel')
+df = pd.DataFrame()
+for change_percent in np.linspace(0, 1, 11)[:-1]:
+    print(f"Modifying model with {change_percent:.0f} perturbation...")
 
-# Parameters
-for change_percent in np.linspace(0, 1, 11)[1:-1]:
-    print(f"Modifying model with {change_percent:.1%} perturbation...")d
-        
-    sif_fname = f"output/sif/ModifiedToyModel_{change_percent:.1%}.sif"
-    rdata_fname = f"output/sif/ModifiedToyModel_{change_percent:.1%}.RData"
-    boolnet_fname = f"output/boolnet/ModifiedToyModel_{change_percent:.1%}.txt"
-    
     r_script = "02.Pertub_model.R"
 
     completed = subprocess.run(
-        ["Rscript", r_script, "-p", str(change_percent)],
+        ["Rscript", r_script, "-p", float(change_percent)],
         capture_output=True,
         text=True
     )
@@ -33,70 +23,53 @@ for change_percent in np.linspace(0, 1, 11)[1:-1]:
     print(completed.stdout)
     print("STDERR:")
     print(completed.stderr)
-
-df = pd.DataFrame()
-for change_percent in np.linspace(0, 1, 11)[-1]:
-    if change_percent == 0:
-        file = None
-    else:
-        file = f"output/ModifiedToyModel_{change_percent:.1%}.RData
-    r(f'model <-load("output/ModifiedToyModel_{change_percent:.1%}.RData")')
-
+    
+    filename = f"{self.ChangePct * 100:.0f}_Modified"
     # 1. CellNOptR performance comparison
-    midas_file = None  # For testing without MIDAS data
-
     # Create analyzer and run analysis
-    analyzer = CellNOptAnalyzer()
+    analyzer = CellNOptAnalyzer(dataset=dataset, ChangePct=change_percent)
 
     for method in ["ga", "ilp"]:
-        model, CNOlist, results = analyzer.run_full_analysis(
-            file=file,
-            midas_file=midas_file,
+        _, _, _ = analyzer.run_full_analysis(
             method=method,
-            output_dir="output/cellnopt_results",
             numSol=3,
             relGap=0.05
         )
-        results["method"] = method
+
+        output_file = os.path.join("output/cellnopt", dataset_map[dataset][0], filename, method)
+
+        results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+
         df = pd.concat([df, results], ignore_index=True)
         
     print("Done.")
 
     # 2. MEIGO optimization (if available)
-    optimizer = MEIGOOptimizer(file=file)
-    optimizer.run_vns()
-    vns_results = optimizer.get_vns_results()
+    optimizer = MEIGOOptimizer(dataset=dataset, ChangePct=change_percent)
+    _, _, vns_results = optimizer.run_full_analysis("VNS")
+
+    output_file = os.path.join("output/meigo", dataset_map[dataset][0], filename, "VNS")
+
+    results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+
+    df = pd.concat([df, results], ignore_index=True)
     
-    print("VNS optimization completed in R via rpy2.")
-    print("VNS Results:", vns_results)
-    vns_results["method"] = "VNS"
-    df = pd.concat([df, vns_results], ignore_index=True)
-
-    # optimizer.run_ess()
-    # ess_results = optimizer.get_ess_results()
-    # print("ESS optimization completed in R via rpy2.")
-    # print("ESS Results:", ess_results)
-
-    # df['ess'].append(ess_results)
     print("MEIGO VNS and ESS optimization completed in R via rpy2.")
 
     # 3. Caspo optimization (if available)
-    if change_percent == 0:
-        file = "output/caspo/Toymodel.sif"
-    else:
-        file = f"output/caspo/ModifiedToyModel_{change_percent:.1%}.sif"
     runner = CaspoOptimizer(
-            pkn=file,
-            midas="Toydata.midas",
-            time=10,
-            out="output/caspo/"
-        )
+        dataset=dataset, ChangePct=change_percent,
+    )
     runner.run()
         
-    print(f"Caspo best score: {caspo_score}")
-    vns_results["method"] = "VNS"
-    df = pd.concat([df, vns_results], ignore_index=True)
+    output_file = os.path.join("output/caspo", dataset_map[dataset][0], filename)
+
+    results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+
+    df = pd.concat([df, results], ignore_index=True)
+    
     print("Comparison complete.")
+
+    df["ChangePct"] = change_percent
     
-    
-    df["ChangePT"] = change_percent
+    pd.to_csv(os.path.join("output", f"comparison_results_{dataset}.csv"), index=False)

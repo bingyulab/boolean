@@ -10,20 +10,38 @@ import json
 
 
 class MEIGOOptimizer:
-    def __init__(self, file, midas_file=None):
-        # Import required R packages
-        self.meigor = importr('MEIGOR')
-        self.file = file
-        self.midas_file = midas_file
-        if file is None:
-            self.filename = "OriginalModel"
-        else:
-            self.filename = os.path.splitext(os.path.basename(file))[0]
-        self.output_file = "output/meigo"
-        if not os.path.exists(self.output_file):
-            os.makedirs(self.output_file, exist_ok=True)
-        print("MEIGOR loaded successfully")
+    def __init__(self, dataset="toy", ChangePct=0.1):
+        """Initialize the MEIGO analyzer"""
+        self.cellnoptr = importr('MEIGOR')
+        self.PERTUB = True if ChangePct > 0 else False
+        self.ChangePct = ChangePct
+        self.parse(dataset)
+        print("MEIGO loaded successfully")
         
+    def parse(self, dataset):
+        dataset_map = {
+            "toy": ("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
+            "apoptosis": ("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
+            "dream": ("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
+            "T-Cell": ("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet"),
+        }
+        if dataset not in dataset_map:
+            raise ValueError(f"Unknown dataset: {dataset}")
+
+        base_name, sif_name, rdata_name, midas_name, bnet_name = dataset_map[dataset]
+        self.dataset = base_name
+        self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
+        self.input_path = os.path.join("data", base_name, self.filename)
+        self.sif_file = os.path.join(self.input_path, sif_name)
+        self.data_file = os.path.join(self.input_path, rdata_name)
+        self.midas_file = os.path.join(self.input_path, midas_name)
+        self.output_file = os.path.join("output/cellnopt", self.dataset, self.filename)       
+        
+        self.GD_MODEL = os.path.join("data", base_name, bnet_name)
+        
+        if not os.path.exists(self.output_file):
+            os.makedirs(self.output_file, exist_ok=True)            
+    
     def load_network(self):
         """
         Load a network from file
@@ -32,18 +50,9 @@ class MEIGOOptimizer:
         Returns:
             R object containing the network
         """
-        print(f"Loading network from {self.file}")
-        if self.file is None:
-            r(f'data("CellNOptR_example", package="MEIGOR")')
-            r('pknmodel <- model_cellnopt')
-        elif self.file.endswith('.sif'):
-            r(f'pknmodel <- readSIF("{self.file}")')
-        elif self.file.endswith('.xml'):
-            r(f'pknmodel <- readSBMLQual("{self.file}")')
-        elif self.file.endswith('.RData'):
-            r(f'load("{self.file}")')
-            r('pknmodel <- mod_model')
+        print(f"Loading network from {self.sif_file}")
 
+        r(f'pknmodel <- readSIF("{self.sif_file}")')
         return r('pknmodel')
     
     def load_data(self):
@@ -54,18 +63,12 @@ class MEIGOOptimizer:
         Returns:
             R object containing the experimental data
         """        
-        output_file = os.path.join(self.output_file, f"{self.filename}_CNOlist.pdf")
+        output_file = os.path.join(self.output_file, f"{self.dataset}_CNOlist.pdf")
         print(f"Loading data from {self.midas_file}, and saving to {output_file}")
-        if self.midas_file is None:
-            r(f'data("CellNOptR_example", package="MEIGOR")')
-            r('cnolist <- CNOlist(cnolist_cellnopt)')  
-            r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
-        else:  
-            r(f'data <- readMIDAS("{midas_file}")')
-            r(f'cnolist <- makecnolist(data, subfield=FALSE, verbose=FALSE)')  # Remove NA timepoints
-            r('cnolist <- CNOlist(cnolist)')  
-            r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
-        return r('cnolist')    
+        r(f'cnolist <- makeCNOlist(readMIDAS("{self.midas_file}", verbose=TRUE), subfield=FALSE)')
+        r('cnolist <- CNOlist(cnolist)')
+        r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")') 
+        return r('cnolist')  
     
     def preprocess_network(self):
         """
@@ -102,21 +105,21 @@ class MEIGOOptimizer:
                         output[name] = obj
         return output
     
-    def _save_results(self, filename, method):
+    def _save_results(self, method):
         # save RData file into json.
         # eSSR VNSR 
-        print(f'Saving results to {filename}_{method}_report.RData')
+        print(f'Saving results to {method}_report.RData')
         filepath = f'{method}_report.RData'
         rdf = ro.r['load'](filepath)
         
         output = MEIGOOptimizer.convert(rdf)
         # 3. Write the combined JSON
-        new_file = f'{self.output_file}/{filename}_{method}_report.json'
+        new_file = f'{self.output_file}/{method}_report.json'
         with open(new_file, 'w') as f:
             json.dump(output, f, indent=2, default=str)
 
         # Move file to new directory (keeping original name)
-        shutil.move(filepath, os.path.join(self.output_file, f'{filename}_{method}_report.RData'))
+        shutil.move(filepath, os.path.join(self.output_file, f'{method}_report.RData'))
 
     def run_vns(self):        
         r('library(here)')
@@ -143,7 +146,7 @@ class MEIGOOptimizer:
             simResults <- simulate_CNO(model=model,#_orig,
                                 CNOlist=cnolist,
                                 bString=optModel$xbest)
-            save(simResults,file="{self.output_file}/{self.filename}_evolSimRes.RData")                    
+            save(simResults,file="{self.output_file}/evolSimRes.RData")                    
         ''')
         print("VNS optimization completed.")
 
@@ -167,25 +170,26 @@ class MEIGOOptimizer:
         ''')
         print("ESS optimization completed.")
 
-    def evaluate_model(self, output_dir, ori_fname="output/caspo/Toymodel.bnet"):
+    def evaluate_model(self, output_dir):
         print("Evaluating model...")
         r('library(here)')
         r('source(here::here("tools", "comparison.R"))')      
-
-        opt_fname = os.path.join(output_dir, f"OPT_{self.filename}.bnet")
-        print(f"Comparing original model {ori_fname} with optimized model {opt_fname}")
+        fname = f"OPT_{self.dataset}.bnet"
+        opt_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
+        print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
         r(f'''
-          res <- compareNetwork(origFile = "{ori_fname}", modifiedFiles = list("{opt_fname}"))
+          res <- compareNetwork(origFile = "{self.GD_MODEL}", modifiedFiles = list("{opt_fname}"))
           ''')
         res = r['res']
         from functions import parse_rpy2_results, analyze_attractor_performance
         results = parse_rpy2_results(res)
         
-        analyze_attractor_performance(results[f"OPT_{self.filename}.bnet"])
-        r('optModel')
+        analyze_attractor_performance(results[f"OPT_{self.dataset}.bnet"])
         # Now result_dict is a Python dictionary
-        results['bitstring'] = r('optModel_VNS$xbest')
-        results['total_time'] = r('optModel_VNS$cpu_time')
+        results[fname]['bitstring'] = [r('Results_VNS$xbest')] * len(results[fname])
+        results[fname]['total_time'] = [r('Results_VNS$cpu_time')] * len(results[fname])
+
+        results[fname].to_csv(os.path.join(output_dir, "results.csv"), index=False)
         # Now result_dict is a Python dictionary
         return results
 
@@ -217,9 +221,9 @@ class MEIGOOptimizer:
             }}
         ''')
                         
-        sif_fname = os.path.join(output_dir, f"OPT_{self.filename}.sif")
-        rdata_fname = os.path.join(output_dir, f"OPT_{self.filename}.RData")
-        boolnet_fname = os.path.join(output_dir, f"OPT_{self.filename}.bnet")
+        sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
+        rdata_fname = os.path.join(output_dir, f"OPT_{self.dataset}.RData")
+        boolnet_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
         
         print(f"Saving SIF to {sif_fname}...")
         
@@ -288,7 +292,7 @@ class MEIGOOptimizer:
         if method == "VNS":
             self.run_vns()
             # Save results
-            self._save_results(self.filename, "VNSR")
+            self._save_results("VNSR")
             
             conversion_success = self.save_results(output_file)
             print(f"Results saved to {output_file}/")
@@ -306,7 +310,7 @@ class MEIGOOptimizer:
         elif method == "ESS":
             self.run_ess()
             # Save results
-            self._save_results(self.filename, "eSSR")
+            self._save_results("eSSR")
             return model, cnolist, self.get_ess_results()
         else:
             raise ValueError(f"Unknown method: {method}")
@@ -314,17 +318,17 @@ class MEIGOOptimizer:
 
 # Example usage:
 if __name__ == "__main__":
-    # optimizer = MEIGOOptimizer(file=None)
-    # model, cnolist, results = optimizer.run_full_analysis("VNS")
-    # model, cnolist, ess_results = optimizer.run_full_analysis("ESS")
-    # vns_results = optimizer.get_vns_results()
-    # print("VNS and ESS optimization completed in R via rpy2.")
-    # print("VNS Results:", vns_results)
-    # print("ESS Results:", ess_results)
+    optimizer = MEIGOOptimizer(dataset="toy", ChangePct=0)
+    model, cnolist, vns_results = optimizer.run_full_analysis("VNS")
+    model, cnolist, ess_results = optimizer.run_full_analysis("ESS")
+    print("VNS and ESS optimization completed in R via rpy2.")
+    print("VNS Results:", vns_results)
+    print("ESS Results:", ess_results)
     
     # Test for general data
-    optimizer = MEIGOOptimizer(file="./output/caspo/ModifiedToyModel_90.RData")
-    model, cnolist, results = optimizer.run_full_analysis("VNS")
-    vns_results = optimizer.get_vns_results()
+    optimizer = MEIGOOptimizer(dataset="toy", ChangePct=0.9)
+    model, cnolist, vns_results = optimizer.run_full_analysis("VNS")
     print("VNS optimization completed in R via rpy2.")
     print("VNS Results:", vns_results)
+    # print("ESS Results:", ess_results)
+    

@@ -10,7 +10,7 @@ source(here::here("tools", "functions.R"))
 #' @param change_percent  A number in [0,1].  Fraction of nodes to perturb.
 #' @return  A modified copy of `model`
 
-perturbModel <- function(model, cnolist, change_percent=0.1) {
+perturbModel <- function(model, cnolist, change_percent=0.1, DELETE=FALSE) {
   # Helper to add a new reaction column
   add_reaction <- function(mod, new_id, src, tgt, is_not=FALSE) {
     # skip if already present
@@ -82,9 +82,18 @@ perturbModel <- function(model, cnolist, change_percent=0.1) {
   for (i in sel_nodes) {
     node1 <- model$namesSpecies[i]
     x <- runif(1)
-    
-    ## 1) Operator insertion (≈1/3 of the time)
-    if (x < 1/3) {
+    if (DELETE) {
+      insertPr <- 1/3
+      deletePr <- 2/3
+      exchangePr <- 1
+    } else {
+      insertPr <- 0.5
+      deletePr <- 0
+      exchangePr <- 1
+    }
+
+    ## 1) Operator insertion
+    if (x < insertPr) {
       # pick random other node
       message(sprintf("Inserting operator for node %s", node1))
       j <- sample(setdiff(seq_len(n_nodes), i), 1)
@@ -107,8 +116,8 @@ perturbModel <- function(model, cnolist, change_percent=0.1) {
         model <- add_reaction(model, new_id, src=i, tgt=j, is_not=FALSE)
       }
       
-    ## 2) Subtree deletion (≈1/3)
-    } else if (x < 2/3) {
+    ## 2) Subtree deletion
+    } else if (x < deletePr) {
       message(sprintf("Deleting subtree for node %s", node1))
       # find all reactions involving node1
       cols <- which(grepl(node1, model$reacID, fixed=TRUE))
@@ -127,7 +136,7 @@ perturbModel <- function(model, cnolist, change_percent=0.1) {
           # }
       }
       
-    ## 3) Operator exchange (≈1/3)
+    ## 3) Operator exchange
     } else {
       message(sprintf("Exchanging operator for node %s", node1))
 
@@ -192,47 +201,82 @@ perturbModel <- function(model, cnolist, change_percent=0.1) {
 #------------------------------------------------------------------------------#
 #   Function: runPerturbPipeline                                                #
 #------------------------------------------------------------------------------#
-#' @param orig_model   A CellNOptR model (list with interMat, notMat, namesSpecies, reacID).
-#'                     Defaults to ToyModel.
-#' @param CNOlist      A CNOlist object for SIF→BoolNet conversion. Defaults to CNOlistToy.
+#' @param dataset      Name of the dataset to use. Options: "toy", "apoptosis", "dream", "TCell".
+#'                     Defaults to "toy".
 #' @param change_pct   Fraction in [0,1] of nodes to perturb. Default: 0.2.
 #' @param seed         Integer RNG seed for reproducibility. Default: 42.
-#' @param out_dir_sif  Directory to save the perturbed SIF & RData. Default: "output/caspo".
-#' @param out_dir_boolnet Directory to save the BoolNet file. Default: "output/boolnet".
-#' @return              A list with elements `mod_model`, `sif_fname`, `rdata_fname`, `boolnet_fname`.
+#' @param DELETE       Logical, if TRUE, allows deletion perturbations. Default: FALSE.
+#' @return             A list with elements `mod_model`, `sif_fname`, `rdata_fname`, `boolnet_fname`.
 #------------------------------------------------------------------------------#
-runPerturbPipeline <- function(orig_model     = { data("ToyModel", package="CellNOptR"); ToyModel },
-                               cnolist        = { data("CNOlistToy", package="CellNOptR"); CNOlistToy },
-                               change_pct     = 0.9,
-                               seed           = 42,
-                               out_dir_sif    = "output/caspo",
-                               out_dir_boolnet= "output/boolnet") {
-  # 1) Perturb
+runPerturbPipeline <- function(dataset     = "toy",
+                               change_pct   = 0.9,
+                               seed         = 42,
+                               DELETE       = FALSE) {
+  # 1) Prepare output dirs 
   set.seed(seed)
+  dataset_map <- list(
+    toy       = c("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
+    apoptosis = c("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
+    dream     = c("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
+    TCell     = c("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet")
+  )
+  if (!dataset %in% names(dataset_map)) {
+    stop(sprintf("Unknown dataset: %s", dataset))
+  }
+
+  vals <- dataset_map[[dataset]]
+  base_name <- vals[1] 
+  sif_name <- vals[2]
+  rdata_name <- vals[3]
+  midas_name <- vals[4]
+  boolnet_name <- vals[5]
+
+  new_d  <- paste0(round(change_pct * 100), "_Modified")
+  output_file <- file.path("data", base_name, new_d)
+  if (!dir.exists(output_file)) dir.create(output_file, recursive=TRUE)
+  
+  sif_fname     <- file.path(output_file, sif_name)
+  rdata_fname   <- file.path(output_file, rdata_name)
+  midas_fname   <- file.path(output_file, midas_name)
+  boolnet_fname <- file.path(output_file, boolnet_name)
+  
+  GD_SIF   <- file.path("data", base_name, sif_name)
+  GD_DATA  <- file.path("data", base_name, rdata_name)
+  GD_MIDAS <- file.path("data", base_name, midas_name)
+  GD_BNET  <- file.path("data", base_name, boolnet_name)
+
+  file.copy(GD_MIDAS, midas_fname, overwrite=TRUE)
+
+  # 2) Perturb
+  orig_model <- readSIF(GD_SIF)
+  cnolist <- makeCNOlist(readMIDAS(GD_MIDAS, verbose=TRUE), subfield=FALSE)
+  
+  if (!file.exists(GD_BNET)) {
+    message("Converting SIF to BoolNet format...")
+    SIFToBoolNet(sifFile     = GD_SIF,
+                 boolnetFile = GD_BNET,
+                 CNOlist     = cnolist,
+                 model       = orig_model,
+                 fixInputs   = FALSE,
+                 preprocess  = TRUE,
+                 ignoreAnds  = TRUE)
+  }
+
   cat(">> DEBUG: number of nodes available = ", length(orig_model$namesSpecies), "\n")
   cat(">> DEBUG: change_pct = ", change_pct, "\n")
   wanted_size <- floor(change_pct * length(orig_model$namesSpecies))
   cat(">> DEBUG: computed size = ", wanted_size, "\n")
   
-  mod_model <- perturbModel(orig_model, cnolist, change_pct)
+  mod_model <- perturbModel(orig_model, cnolist, change_pct, DELETE=DELETE)
   message(sprintf("Reactions before: %d", length(orig_model$reacID)))
   message(sprintf("Reactions after : %d\n",  length(mod_model$reacID)))
-  
-  # 2) Prepare output dirs
-  dir.create(out_dir_sif,      showWarnings=FALSE, recursive=TRUE)
-  dir.create(out_dir_boolnet,  showWarnings=FALSE, recursive=TRUE)
-  
-  # Filenames
-  pct_lbl      <- sprintf("%.0f", change_pct*100)
-  sif_fname    <- file.path(out_dir_sif,     sprintf("ModifiedToyModel_%s.sif",  pct_lbl))
-  rdata_fname  <- file.path(out_dir_sif,     sprintf("ModifiedToyModel_%s.RData",pct_lbl))
-  boolnet_fname<- file.path(out_dir_boolnet, sprintf("ModifiedToyModel_%s.bnet",  pct_lbl))
   
   # Print the result of ifelse for each reaction
   for (i in seq_along(mod_model$reacID)) {
     res <- ifelse(any(mod_model$notMat[, i] == 1), -1, 1)
     cat(sprintf("Reaction %s: %d\n", mod_model$reacID[i], res))
   }
+
   # 3) Save RData & SIF
   message(mod_model)
   save(mod_model, file=rdata_fname)
@@ -263,40 +307,19 @@ suppressPackageStartupMessages({
 
 #--- Define command-line options ---------------------------------------------
 option_list <- list(
-  make_option(c("-m", "--model"), type="character", default=NULL,
+  make_option(c("-d", "--dataset"), type="character", default="toy",
               help="Path to original model RData or RDS file", metavar="FILE"),
-  make_option(c("-c", "--cno"), type="character", default=NULL,
-              help="Path to CNOlist object (RDS)", metavar="FILE"),
   make_option(c("-p", "--changePCT"), type="double", default=0.9,
               help="Change percentage [default %default]", metavar="DOUBLE"),
+  make_option(c("-D", "--delete"), type="logical", default=FALSE,
+              help="Enable deletion perturbation [default %default]", metavar="LOGICAL"),
   make_option(c("-s", "--seed"), type="integer", default=44,
-              help="Random seed [optional]", metavar="INT"),
-  make_option(c("--outSIF"), type="character", default="outputs/sif",
-              help="Output directory for .sif files [default %default]", metavar="DIR"),
-  make_option(c("--outBoolNet"), type="character", default="outputs/boolnet",
-              help="Output directory for BoolNet files [default %default]", metavar="DIR")
+              help="Random seed [optional]", metavar="INT")
 )
 
 parser <- OptionParser(option_list=option_list,
                        description = "Run perturbation pipeline for a Boolean model")
 opt <- parse_args(parser)
-
-#--- Validate inputs ----------------------------------------------------------
-# if (is.null(opt$model)) {
-#   stop("Error: --model must be provided (path to your original model file).")
-# }
-# if (is.null(opt$cno)) {
-#   stop("Error: --cno must be provided (path to your CNOlist file).")
-# }
-
-#--- Load input objects ------------------------------------------------------
-# Assumes these files contain the needed R objects:
-#   - model loaded into variable 'myCustomModel'
-#   - CNOlist loaded into 'myCNOlist'
-# message("Loading model from: ", opt$model)
-# load(opt$model)        # e.g. loads `myCustomModel`
-# message("Loading CNOlist from: ", opt$cno)
-# myCNOlist <- readRDS(opt$cno)
 
 #--- (Optional) set seed -----------------------------------------------------
 if (!is.null(opt$seed)) {
@@ -305,15 +328,9 @@ if (!is.null(opt$seed)) {
 }
 
 #--- Run the pipeline --------------------------------------------------------
-if (is.null(opt$model)) {  
-  results <- runPerturbPipeline(
-    change_pct      = opt$changePCT,
+results <- runPerturbPipeline(
+    dataset      = opt$dataset,
+    change_pct   = opt$changePCT,
+    DELETE       = opt$delete,
+    seed         = opt$seed
   )
-} else {    
-  results <- runPerturbPipeline(
-    orig_model      = myCustomModel,
-    CNOlist         = myCNOlist,
-    change_pct      = opt$changePCT,
-  )
-}
-

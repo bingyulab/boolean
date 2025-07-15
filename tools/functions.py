@@ -4,6 +4,7 @@ import rpy2.robjects as ro
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 
+from collections import defaultdict
 
 def parse_namedlist_to_dataframes(named_list):
     """
@@ -94,3 +95,105 @@ def analyze_attractor_performance(df):
     valid_f1 = df['f1'].notna().sum()
     print(f"Attractors with valid precision: {valid_precision}/{len(df)}")
     print(f"Attractors with valid F1: {valid_f1}/{len(df)}")
+    
+
+def caspo_to_boolnet(caspo_results, output_file=None, frequency_threshold=0.5):
+    """
+    Convert CASPO training results to BoolNet format.
+    
+    Parameters:
+    - caspo_results: Can be either:
+        1. A string with comma-separated rules (first format)
+        2. A pandas DataFrame with columns: mapping, frequency, inclusive, exclusive
+        3. A CSV file path containing the DataFrame format
+    - output_file: Path to save the BoolNet file (optional)
+    - frequency_threshold: Minimum frequency to include a rule (default: 0.5)
+    
+    Returns:
+    - Boolean indicating success/failure
+    - String containing the BoolNet content (if successful)
+    """
+    
+    try:
+        # Parse input based on format
+        if isinstance(caspo_results, str):
+            if caspo_results.endswith('.csv'):
+                # File path
+                df = pd.read_csv(caspo_results)
+                rules = df[df['frequency'] >= frequency_threshold]['mapping'].tolist()
+            elif ',' in caspo_results and '<-' in caspo_results:
+                # Comma-separated rules format
+                rules = [rule.strip() for rule in caspo_results.split(',')]
+            else:
+                raise ValueError("Invalid string format")
+        elif isinstance(caspo_results, pd.DataFrame):
+            # DataFrame format
+            rules = caspo_results[caspo_results['frequency'] >= frequency_threshold]['mapping'].tolist()
+        else:
+            raise ValueError("Unsupported input format")
+        
+        # Group rules by target gene
+        gene_rules = defaultdict(list)
+        
+        for rule in rules:
+            if '<-' not in rule:
+                continue
+                
+            target, regulators = rule.split('<-')
+            target = target.strip()
+            regulators = regulators.strip()
+            
+            # Convert regulators to Boolean format
+            # Handle negation (!) and conjunction (+)
+            boolean_expr = regulators.replace('+', ' & ').replace('!', '!')
+            
+            gene_rules[target].append(boolean_expr)
+        
+        # Generate BoolNet content
+        boolnet_lines = ["targets, factors"]
+        
+        for target, expressions in gene_rules.items():
+            if len(expressions) == 1:
+                boolean_rule = expressions[0]
+            else:
+                # Multiple rules for same target are combined with OR
+                boolean_rule = ' | '.join(f"{expr}" for expr in expressions)
+            
+            boolnet_lines.append(f"{target}, {boolean_rule}")
+        
+        # Add any genes that appear as regulators but not as targets
+        all_genes = set(gene_rules.keys())
+        for rule in rules:
+            if '<-' in rule:
+                regulators = rule.split('<-')[1].strip()
+                # Extract gene names (remove operators)
+                gene_names = re.findall(r'[A-Za-z0-9_]+', regulators)
+                all_genes.update(gene_names)
+        
+        # Add missing genes as constants (they maintain their state)
+        for gene in all_genes:
+            if gene not in gene_rules:
+                boolnet_lines.append(f"{gene}, {gene}")
+        
+        boolnet_content = '\n'.join(boolnet_lines)
+        
+        # Save to file if specified
+        if output_file:
+            with open(output_file, 'w') as f:
+                f.write(boolnet_content)
+            print(f"BoolNet file saved to: {output_file}")
+        
+        return True, boolnet_content
+        
+    except Exception as e:
+        print(f"Error converting CASPO to BoolNet: {e}")
+        return False, None
+
+# Example usage functions for both formats
+def convert_caspo_string_format(caspo_string, output_file=None):
+    """Convert CASPO string format to BoolNet."""
+    return caspo_to_boolnet(caspo_string, output_file)
+
+def convert_caspo_csv_format(csv_file_or_df, output_file=None, frequency_threshold=0.5):
+    """Convert CASPO CSV format to BoolNet."""
+    return caspo_to_boolnet(csv_file_or_df, output_file, frequency_threshold)

@@ -10,24 +10,43 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import r
 
 
+dataset_map = {
+    "toy": ("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
+    "apoptosis": ("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
+    "dream": ("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
+    "T-Cell": ("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet"),
+}
+        
 class CellNOptAnalyzer:
     """
     A Python class to interface with CellNOpt R package using RPy2
     """
-    
-    def __init__(self, file, midas_file=None):
+
+    def __init__(self, dataset="toy", ChangePct=0.1):
         """Initialize the CellNOpt analyzer"""
         self.cellnoptr = importr('CellNOptR')
-        self.file = file
-        self.midas_file = midas_file
-        if file is None:
-            self.filename = "OriginalModel"
-        else:
-            self.filename = os.path.splitext(os.path.basename(file))[0]
-        self.output_file = "output/cellnopt"
+        self.PERTUB = True if ChangePct > 0 else False
+        self.ChangePct = ChangePct
+        self.parse(dataset)
+        print("CellNOptR loaded successfully")
+    
+    def parse(self, dataset):
+        if dataset not in dataset_map:
+            raise ValueError(f"Unknown dataset: {dataset}")
+
+        base_name, sif_name, rdata_name, midas_name, bnet_name = dataset_map[dataset]
+        self.dataset = base_name
+        self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
+        self.input_path = os.path.join("data", base_name, self.filename)
+        self.sif_file = os.path.join(self.input_path, sif_name)
+        self.data_file = os.path.join(self.input_path, rdata_name)
+        self.midas_file = os.path.join(self.input_path, midas_name)
+        self.output_file = os.path.join("output/cellnopt", self.dataset, self.filename)       
+        
+        self.GD_MODEL = os.path.join("data", base_name, bnet_name)
+        
         if not os.path.exists(self.output_file):
             os.makedirs(self.output_file, exist_ok=True)
-        print("CellNOptR loaded successfully")
     
     def load_network(self):
         """
@@ -37,18 +56,9 @@ class CellNOptAnalyzer:
         Returns:
             R object containing the network
         """
-        print(f"Loading network from {self.file}")
-        if self.file is None:
-            r(f'data(ToyModel, package="CellNOptR")')
-            r('pknmodel <- ToyModel')
-        elif self.file.endswith('.sif'):
-            r(f'pknmodel <- readSIF("{self.file}")')
-        elif self.file.endswith('.xml'):
-            r(f'pknmodel <- readSBMLQual("{self.file}")')
-        elif self.file.endswith('.RData'):
-            r(f'load("{self.file}")')
-            r('pknmodel <- mod_model')
+        print(f"Loading network from {self.sif_file}")
 
+        r(f'pknmodel <- readSIF("{self.sif_file}")')
         return r('pknmodel')
     
     def load_data(self):
@@ -59,17 +69,10 @@ class CellNOptAnalyzer:
         Returns:
             R object containing the experimental data
         """        
-        output_file = os.path.join(self.output_file, f"{self.filename}_CNOlist.pdf")
+        output_file = os.path.join(self.output_file, f"{self.dataset}_CNOlist.pdf")
         print(f"Loading data from {self.midas_file}, and saving to {output_file}")
-        if self.midas_file is None:
-            r(f'data(CNOlistToy, package="CellNOptR")')
-            r('cnolist <- CNOlistToy')  
-            r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
-        else:  
-            r(f'data <- readMIDAS("{midas_file}")')
-            r(f'cnolist <- makecnolist(data, subfield=FALSE, verbose=FALSE)')  # Remove NA timepoints
-            r('cnolist <- CNOlist(cnolist)')  
-            r(f'plotCNOlistPDF(CNOlist=cnolist, filename="{output_file}")')  # Example timepoints
+        r(f'cnolist <- makeCNOlist(readMIDAS("{self.midas_file}", verbose=TRUE), subfield=FALSE)')
+        r(f'plotCNOlistPDF(CNOlist=CNOlist(cnolist), filename="{output_file}")') 
         return r('cnolist')
     
     def plot_network(self, cnolistPB=None, output_file="output/cellnopt/network_plot"):
@@ -80,7 +83,7 @@ class CellNOptAnalyzer:
         """
         from rpy2.robjects import r
         from rpy2.robjects.packages import importr
-        output_file = os.path.join(self.output_file, f"{self.filename}_network_plot")
+        output_file = os.path.join(self.output_file, f"{self.dataset}_network_plot")
         print(f"Plotting network and saving to {output_file}")
         r(f'library(CellNOptR)')
         r(f'library(CNORdt)')
@@ -150,11 +153,11 @@ class CellNOptAnalyzer:
                 r(f'''
                     cutAndPlot(model=model, bStrings=list(opt_results$bString),
                         CNOlist=cnolist,plotPDF=TRUE);
-                    pdf("{output_file}/{self.filename}_evolFitT1.pdf");
+                    pdf("{output_file}/{self.dataset}_evolFitT1.pdf");
                     plotFit(optRes=opt_results);
                     dev.off();
-                    plotModel(model, cnolist, bString=opt_results$bString, output="SVG", filename="{output_file}/{self.filename}_mapback_evolFitT1_1.svg");
-                    save(simResults,file=paste("{output_file}/{self.filename}_evolSimRes.RData",sep=""))                    
+                    plotModel(model, cnolist, bString=opt_results$bString, output="SVG", filename="{output_file}/{self.dataset}_mapback_evolFitT1_1.svg");
+                    save(simResults,file=paste("{output_file}/{self.dataset}_evolSimRes.RData",sep=""))                    
                 ''')
         elif method == 'ilp':   
             cplexPath = "/home/users/bjiang/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex" 
@@ -192,8 +195,8 @@ class CellNOptAnalyzer:
             if PLOT:
                 r(f'''
                     cutAndPlot(CNOlist = cnolist, model = model, bStrings = list(opt_results$bitstringILP[[1]]), plotPDF=TRUE)
-                    plotModel(model, cnolist, bString=opt_results$bitstringILP[[1]], output="SVG", filename="{output_file}/{self.filename}_ilpFitT1.svg");
-                    save(simResults,file=paste("{output_file}/{self.filename}_ilpSimRes.RData",sep=""))  
+                    plotModel(model, cnolist, bString=opt_results$bitstringILP[[1]], output="SVG", filename="{output_file}/{self.dataset}_ilpFitT1.svg");
+                    save(simResults,file=paste("{output_file}/{self.dataset}_ilpSimRes.RData",sep=""))  
                 ''')
         return r('optModel')          
 
@@ -215,9 +218,9 @@ class CellNOptAnalyzer:
                 colnames(optModel$notMat) <- colnames(optModel$interMat)
             }}
         ''')
-        sif_fname = os.path.join(output_dir, f"OPT_{self.filename}.sif")
-        rdata_fname = os.path.join(output_dir, f"OPT_{self.filename}.RData")
-        boolnet_fname = os.path.join(output_dir, f"OPT_{self.filename}.bnet")
+        sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
+        rdata_fname = os.path.join(output_dir, f"OPT_{self.dataset}.RData")
+        boolnet_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
         
         print(f"Saving SIF to {sif_fname}...")
         
@@ -266,33 +269,35 @@ class CellNOptAnalyzer:
                 namesData=list(CNOlist="cnolist",model="Model"))
         ''')
         
-    def evaluate_model(self, output_dir, ori_fname="output/caspo/Toymodel.bnet"):
+    def evaluate_model(self, output_dir):
         """
         Evaluate the model using the CellNOptR package
         """
         print("Evaluating model...")
         r('library(here)')
         r('source(here::here("tools", "comparison.R"))')
-
-        opt_fname = os.path.join(output_dir, f"OPT_{self.filename}.bnet")
-        print(f"Comparing original model {ori_fname} with optimized model {opt_fname}")
+        fname = f"OPT_{self.dataset}.bnet"
+        opt_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
+        print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
         r(f'''
-          res <- compareNetwork(origFile = "{ori_fname}", modifiedFiles = list("{opt_fname}"))
+          res <- compareNetwork(origFile = "{self.GD_MODEL}", modifiedFiles = list("{opt_fname}"))
           ''')
         res = r['res']
         from functions import parse_rpy2_results, analyze_attractor_performance
         results = parse_rpy2_results(res)
-        
-        analyze_attractor_performance(results[f"OPT_{self.filename}.bnet"])
+
+        analyze_attractor_performance(results[f"OPT_{self.dataset}.bnet"])
         # Now result_dict is a Python dictionary
         
         if 'ilp' in output_dir:
-            results['bitstring'] = r('opt_results$bitstringILP[[1]]')
-            results['total_time'] = r('opt_results$total_time')
+            results[fname]['bitstring'] = [r('opt_results$bitstringILP[[1]]')] * len(results[fname])
+            results[fname]['total_time'] = [r('opt_results$cpu_time')] * len(results[fname])
         else:
-            results['bitstring'] = r('opt_results$bString')
-            results['total_time'] = r('opt_results$total_time')
-        
+            results[fname]['bitstring'] = [r('opt_results$bString')] * len(results[fname])
+            results[fname]['total_time'] = [r('opt_results$total_time')] * len(results[fname])
+
+        pd.DataFrame(results).to_csv(os.path.join(output_dir, "results.csv"), index=False)
+
         return results  
     
     def run_full_analysis(self, method="ga", numSol=3, relGap=0.05,):
@@ -326,11 +331,10 @@ class CellNOptAnalyzer:
         # Evaluate and cross-validate
         print("Evaluating and cross-validating the model...")
         results = self.evaluate_model(output_file)        
-        
         print("Analysis completed successfully!")
         return model, cnolist, results
 
-def main(file, midas_file=None, method="ga"):
+def main(dataset="toy", PERTUB=False, ChangePct=0.1, method="ga"):
     """Example usage of CellNOptAnalyzer"""
     
     # file = "data/apoptosis.xml"
@@ -340,8 +344,9 @@ def main(file, midas_file=None, method="ga"):
 
     # Create analyzer and run analysis
     analyzer = CellNOptAnalyzer(
-        file=file,
-        midas_file=midas_file)
+        dataset=dataset,
+        ChangePct=ChangePct
+    )
 
     model, cnolist, results = analyzer.run_full_analysis(
         method=method,
@@ -352,6 +357,4 @@ def main(file, midas_file=None, method="ga"):
 
 if __name__ == "__main__":
     # model, cnolist, results = main(Test=True, method="ilp")
-    model, cnolist, results = main(
-        "./output/caspo/ModifiedToyModel_10.RData", 
-        midas_file=None, method="ga")
+    model, cnolist, results = main(dataset="toy", ChangePct=0.1, method="ga")
