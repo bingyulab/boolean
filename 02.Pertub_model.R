@@ -330,7 +330,7 @@ if (!is.null(opt$seed)) {
 #--- Run the pipeline --------------------------------------------------------
 results <- runPerturbPipeline(
     dataset      = opt$dataset,
-    change_pct   = opt$changePCT,
+    change_pct   = as.double(opt$changePCT),
     DELETE       = opt$delete,
     seed         = opt$seed
   )
