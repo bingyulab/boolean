@@ -22,7 +22,7 @@ Four optimization algorithms are employed for network reconstruction: Variable N
 
 During initial testing, we observed that higher perturbation levels frequently resulted in reconstructed models of significantly reduced size compared to the original network. This phenomenon occurs because optimization algorithms typically favor parsimonious solutions when fitting experimental constraints, particularly when the PKN contains topological errors.
 
-**Possible Solution**: Implementation of parameter tuning strategies to encourage larger model solutions when biologically justified. Specific parameter adjustments include reducing size penalty factors in GA and ILP algorithms, increasing model length parameters in Caspo, and adjusting exploration parameters in VNS to promote more comprehensive solution spaces.
+**Possible Solution**: Implementation of parameter tuning strategies to encourage larger model solutions when biologically justified. Specific parameter adjustments include reducing size penalty factors in GA and ILP algorithms, increasing model length parameters in Caspo, and adjusting exploration parameters in VNS to promote more comprehensive solution spaces. More explanation of parameter can be found in the [doc/parameter.md](doc/parameter.md) file.
 
 Note: parameter tuning may not always yield larger models, as the optimization algorithms may still converge to smaller solutions that fit the data well. However, it is expected to mitigate excessive model reduction in many cases.
 
@@ -30,7 +30,7 @@ Note: parameter tuning may not always yield larger models, as the optimization a
 
 A critical methodological issue emerged regarding attractor comparison when reconstructed models contain different node sets than the original model. Direct comparison becomes problematic when state spaces differ in dimensionality, leading to potentially biased similarity assessments.
 
-**Possible Solution**: Development of a sophisticated projection-based comparison framework that operates across three scenarios: comparison using only common nodes present in both models, comparison using all nodes with zero-fill for missing values, and comparison using all nodes with appropriate handling of undefined states. The system automatically selects the most appropriate comparison method based on node coverage and data completeness.
+**Possible Solution**: Development of a sophisticated projection-based comparison framework that comparison using only common nodes present in both models. The system combines multiple metrics through a weighted composite score, providing a single interpretable measure of reconstruction quality. 
 
 ### Challenge 3: Biological Validity Assessment
 

@@ -14,6 +14,10 @@ module load math/MATLAB/2024a-r6
 ```
 ## Installation
 Please follow the instructions in the [installation.md](doc/installation.md) file for installation.
+```bash
+pip install -r requirements.txt
+Rscript Install/install.R
+```
 
 ## Data Preparation
 ```bash

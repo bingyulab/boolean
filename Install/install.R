@@ -14,7 +14,7 @@ packages_to_install <- c(
     "Cairo",
     "BoolNet",
     "here",
-    "optparse"
+    "optparse",
 )
 
 cat("Installing packages...\n")
