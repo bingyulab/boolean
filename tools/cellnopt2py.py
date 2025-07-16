@@ -8,14 +8,8 @@ import os
 import sys
 from rpy2.robjects.packages import importr
 from rpy2.robjects import r
+from tools.config import dataset_map
 
-
-dataset_map = {
-    "toy": ("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
-    "apoptosis": ("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
-    "dream": ("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
-    "T-Cell": ("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet"),
-}
         
 class CellNOptAnalyzer:
     """
@@ -274,29 +268,26 @@ class CellNOptAnalyzer:
         Evaluate the model using the CellNOptR package
         """
         print("Evaluating model...")
-        r('library(here)')
-        r('source(here::here("tools", "comparison.R"))')
+        from AttractorAnalysis import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
-        opt_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
+        opt_fname = os.path.join(output_dir, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
-        r(f'''
-          res <- compareNetwork(origFile = "{self.GD_MODEL}", modifiedFiles = list("{opt_fname}"))
-          ''')
-        res = r['res']
-        from functions import parse_rpy2_results, analyze_attractor_performance
-        results = parse_rpy2_results(res)
-
-        analyze_attractor_performance(results[f"OPT_{self.dataset}.bnet"])
-        # Now result_dict is a Python dictionary
+        
+        AA = AttractorAnalysis(
+            origFile=self.GD_MODEL,
+            modifiedFiles=opt_fname,
+        )
+        results = AA.run_analysis()
         
         if 'ilp' in output_dir:
-            results[fname]['bitstring'] = [r('opt_results$bitstringILP[[1]]')] * len(results[fname])
-            results[fname]['total_time'] = [r('opt_results$cpu_time')] * len(results[fname])
+            results['total_time'] = r('opt_results$cpu_time')
+            results['method']     = "ILP"
         else:
-            results[fname]['bitstring'] = [r('opt_results$bString')] * len(results[fname])
-            results[fname]['total_time'] = [r('opt_results$total_time')] * len(results[fname])
-
-        pd.DataFrame(results).to_csv(os.path.join(output_dir, "results.csv"), index=False)
+            results['total_time'] = r('opt_results$total_time')
+            results['method']     = "GA"
+        
+        results['change_percent']     = self.ChangePct
+        # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
 
         return results  
     
@@ -334,7 +325,7 @@ class CellNOptAnalyzer:
         print("Analysis completed successfully!")
         return model, cnolist, results
 
-def main(dataset="toy", PERTUB=False, ChangePct=0.1, method="ga"):
+def main(dataset="toy", ChangePct=0.1, method="ga"):
     """Example usage of CellNOptAnalyzer"""
     
     # file = "data/apoptosis.xml"

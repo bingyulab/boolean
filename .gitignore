@@ -173,3 +173,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 Install/*.bin
+*.jar
+output/
+test/
+tmp.sif
+*.pdf

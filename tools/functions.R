@@ -1,5 +1,33 @@
 library(CellNOptR)
 
+
+write_boolnet_to_sif <- function(net, file) {
+  sif <- data.frame()
+  for (gene in names(net$interactions)) {
+    expr <- net$interactions[[gene]]$expression
+    # Remove parentheses and split by operators
+    expr_clean <- gsub("[()]", "", expr)
+    # Split by | or & (OR/AND), then trim whitespace
+    regulators <- unlist(strsplit(expr_clean, "[|&]"))
+    regulators <- trimws(regulators)
+    regulators <- regulators[regulators != "" & regulators != gene]
+    for (reg in regulators) {
+      if (startsWith(reg, "!")) {
+        interaction <- -1
+        reg_clean <- substring(reg, 2)
+      } else {
+        interaction <- 1
+        reg_clean <- reg
+      }
+      sif <- rbind(sif, data.frame(source=reg_clean, interaction=interaction, target=gene, stringsAsFactors=FALSE))
+    }
+  }
+  write.table(sif, file=file, sep="\t", row.names=FALSE, col.names=FALSE, quote=FALSE)
+}
+
+# Usage:
+# write_boolnet_to_sif(net, "network.sif")
+
 SIFToBoolNet <- function(sifFile, boolnetFile, CNOlist, model=NULL, fixInputs=TRUE, preprocess=TRUE, ignoreAnds=TRUE)
 {
   if (preprocess)
