@@ -1,75 +1,68 @@
-from tools.cellnopt2py import CellNOptOptimizer
-from tools.meigo import MEIGOOptimizer
-from tools.caspo import CaspoOptimizer
+import os
 import subprocess
-import os 
+import numpy as np
+import pandas as pd
+from tools.cellnopt2py import CellNOptAnalyzer
+from tools.meigo import MEIGOOptimizer
+from tools.caspoTest import CaspoOptimizer
+from tools.config import dataset_map
 
-dataset = "toy" 
 
-df = pd.DataFrame()
-for change_percent in np.linspace(0, 1, 11)[:-1]:
-    print(f"Modifying model with {change_percent:.0f} perturbation...")
+class ModelComparisonRunner:
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.df = pd.DataFrame()
 
-    r_script = "02.Pertub_model.R"
-
-    completed = subprocess.run(
-        ["Rscript", r_script, "-p", float(change_percent)],
-        capture_output=True,
-        text=True
-    )
-        
-    print("Return code:", completed.returncode)
-    print("STDOUT:")
-    print(completed.stdout)
-    print("STDERR:")
-    print(completed.stderr)
-    
-    filename = f"{self.ChangePct * 100:.0f}_Modified"
-    # 1. CellNOptR performance comparison
-    # Create analyzer and run analysis
-    analyzer = CellNOptAnalyzer(dataset=dataset, ChangePct=change_percent)
-
-    for method in ["ga", "ilp"]:
-        _, _, _ = analyzer.run_full_analysis(
-            method=method,
-            numSol=3,
-            relGap=0.05
+    def perturb_model(self, change_percent):
+        r_script = "02.Pertub_model.R"
+        completed = subprocess.run(
+            ["Rscript", r_script, "-p", str(change_percent)],
+            capture_output=True,
+            text=True
         )
+        print(f"Perturbation {change_percent:.0f}: Return code {completed.returncode}")
+        print("STDOUT:", completed.stdout)
+        print("STDERR:", completed.stderr)
 
-        output_file = os.path.join("output/cellnopt", dataset_map[dataset][0], filename, method)
+    def run_cellnopt(self, change_percent, filename):
+        analyzer = CellNOptAnalyzer(dataset=self.dataset, ChangePct=change_percent)
+        for method in ["ga", "ilp"]:
+            _, _, results = analyzer.run_full_analysis(method=method, numSol=3, relGap=0.05)
+            # output_file = os.path.join("output/cellnopt", dataset_map[self.dataset][0], filename, method)
+            # results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+            self.df = pd.concat([self.df, results], ignore_index=True)
 
-        results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+    def run_meigo(self, change_percent, filename):
+        optimizer = MEIGOOptimizer(dataset=self.dataset, ChangePct=change_percent)
+        _, _, results = optimizer.run_full_analysis("VNS")
+        # output_file = os.path.join("output/meigo", dataset_map[self.dataset][0], filename, "VNS")
+        # results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+        self.df = pd.concat([self.df, results], ignore_index=True)
 
-        df = pd.concat([df, results], ignore_index=True)
-        
-    print("Done.")
+    def run_caspo(self, change_percent, filename):
+        runner = CaspoOptimizer(dataset=self.dataset, ChangePct=change_percent)
+        results = runner.run()
+        # output_file = os.path.join("output/caspo", dataset_map[self.dataset][0], filename)
+        # results = pd.read_csv(os.path.join(output_file, 'results.csv'))
+        self.df = pd.concat([self.df, results], ignore_index=True)
 
-    # 2. MEIGO optimization (if available)
-    optimizer = MEIGOOptimizer(dataset=dataset, ChangePct=change_percent)
-    _, _, vns_results = optimizer.run_full_analysis("VNS")
+    def run(self):
+        for change_percent in np.linspace(0, 1, 11)[:-1]:
+            print(f"\nModifying model with {change_percent:.0f} perturbation...")
+            self.perturb_model(change_percent)
+            filename = f"{change_percent * 100:.0f}_Modified"
+            self.run_cellnopt(change_percent, filename)
+            print("CellNOptR analysis done.")
+            self.run_meigo(change_percent, filename)
+            print("MEIGO VNS analysis done.")
+            self.run_caspo(change_percent, filename)
+            print("Caspo analysis done.")
+            self.df["ChangePct"] = change_percent
+        output_path = os.path.join("output", f"comparison_results_{self.dataset}.csv")
+        self.df.to_csv(output_path, index=False)
+        print(f"\nAll results saved to {output_path}")
 
-    output_file = os.path.join("output/meigo", dataset_map[dataset][0], filename, "VNS")
 
-    results = pd.read_csv(os.path.join(output_file, 'results.csv'))
-
-    df = pd.concat([df, results], ignore_index=True)
-    
-    print("MEIGO VNS and ESS optimization completed in R via rpy2.")
-
-    # 3. Caspo optimization (if available)
-    runner = CaspoOptimizer(
-        dataset=dataset, ChangePct=change_percent,
-    )
+if __name__ == "__main__":
+    runner = ModelComparisonRunner(dataset="toy")
     runner.run()
-        
-    output_file = os.path.join("output/caspo", dataset_map[dataset][0], filename)
-
-    results = pd.read_csv(os.path.join(output_file, 'results.csv'))
-
-    df = pd.concat([df, results], ignore_index=True)
-    
-    print("Comparison complete.")
-
-    df["ChangePct"] = change_percent
-    
-    pd.to_csv(os.path.join("output", f"comparison_results_{dataset}.csv"), index=False)
