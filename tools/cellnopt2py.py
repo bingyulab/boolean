@@ -16,11 +16,13 @@ class CellNOptAnalyzer:
     A Python class to interface with CellNOpt R package using RPy2
     """
 
-    def __init__(self, dataset="toy", ChangePct=0.1):
+    def __init__(self, dataset="toy", manager=None):
         """Initialize the CellNOpt analyzer"""
         self.cellnoptr = importr('CellNOptR')
-        self.PERTUB = True if ChangePct > 0 else False
-        self.ChangePct = ChangePct
+        self.PERTUB = True if manager.change_percent > 0 else False
+        self.ChangePct = manager.change_percent
+        self.ilp_config = manager.get_ilp_config()
+        self.ga_config = manager.get_ga_config()
         self.parse(dataset)
         print("CellNOptR loaded successfully")
     
@@ -28,7 +30,7 @@ class CellNOptAnalyzer:
         if dataset not in dataset_map:
             raise ValueError(f"Unknown dataset: {dataset}")
 
-        base_name, sif_name, rdata_name, midas_name, bnet_name = dataset_map[dataset]
+        base_name, sif_name, rdata_name, midas_name, bnet_name, _ = dataset_map[dataset]
         self.dataset = base_name
         self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
         self.input_path = os.path.join("data", base_name, self.filename)
@@ -102,7 +104,7 @@ class CellNOptAnalyzer:
         r('model <- preprocessing(data = cnolist, model = pknmodel)')
         return r('model')
 
-    def optimize_network(self, output_file, PLOT=True, method='ga', numSol=3, relGap=0.05):
+    def optimize_network(self, output_file, PLOT=True, method='ga'):
         """
         Run Boolean network optimization
         Args:
@@ -112,30 +114,23 @@ class CellNOptAnalyzer:
         Returns:
             R object containing optimization results
         """
-        print(f"Running optimization (method = {method}, number of solution ={numSol}, relGap={relGap})...")
+        print(f"Running optimization (method = {method}...")
         
         r('library(here)')
         r('source(here::here("tools", "functions.R"))')   
+
         if method == 'ga':  
             r(f'''
                 resEcnolist <- residualError(cnolist);
                 initBstring <- rep(1,length(model$reacID));
-                maxGens=1000;
-                stallGenMax=Inf;
-                popSize=200;
-                elitism=popSize/10;
-                sizeFac=1e-04; 
-                NAFac=1; 
-                maxTime=Inf; 
-                numStarts = 5;
                 t <- system.time(opt_results<-gaBinaryT1(
-                    CNOlist=cnolist,
-                    model=model,
-                    sizeFac=sizeFac,
-                    initBstring=initBstring,
-                    maxGens=maxGens, popSize=popSize,  elitism=elitism, 
-                    stallGenMax=stallGenMax,
-                    maxTime=maxTime, verbose=TRUE)
+                    CNOlist=cnolist, model=model, initBstring=initBstring,
+                    maxGens={self.ga_config["maxGens"]}, sizeFac={self.ga_config["sizeFac"]}, 
+                    popSize={self.ga_config["popSize"]},  elitism={self.ga_config["elitism"]}, 
+                    stallGenMax={self.ga_config["stallGenMax"]}, relTol={self.ga_config["relTol"]},
+                    pMutation={self.ga_config["pMutation"]}, selPress={self.ga_config["selPress"]},
+                    NAFac={self.ga_config["NAFac"]},
+                    maxTime={self.ga_config["maxTime"]}, verbose={self.ga_config["verbose"]})
                 )
                 cat("Time taken for optimization:", t[3], "seconds\\n");
                 optModel <- cutModel(model, opt_results$bString);
@@ -153,8 +148,7 @@ class CellNOptAnalyzer:
                     plotModel(model, cnolist, bString=opt_results$bString, output="SVG", filename="{output_file}/{self.dataset}_mapback_evolFitT1_1.svg");
                     save(simResults,file=paste("{output_file}/{self.dataset}_evolSimRes.RData",sep=""))                    
                 ''')
-        elif method == 'ilp':   
-            cplexPath = "/home/users/bjiang/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex" 
+        elif method == 'ilp':  
             r(f'''
                 print("Running ILP optimization...");
                 cnolist <- CNOlist(cnolist);
@@ -173,11 +167,12 @@ class CellNOptAnalyzer:
                 startILP <- Sys.time();
                 print("Creating LP file and running ILP...");   
                 resILP <- CellNOptR:::createAndRunILP(
-                    model, md, cnolistReal, accountForModelSize = TRUE, 
-                    sizeFac = 0.0001, mipGap=0, relGap={relGap}, 
-                    timelimit=3600, cplexPath = "{cplexPath}", 
-                    method = "quadratic", numSolutions = {numSol}, 
-                    limitPop = 500, poolIntensity = 0, poolReplace = 2);
+                    model, md, cnolistReal, accountForModelSize = {self.ilp_config['accountForModelSize']}, 
+                    sizeFac = {self.ilp_config['sizeFac']}, mipGap={self.ilp_config['mipGap']}, 
+                    relGap={self.ilp_config['relGap']}, timelimit={self.ilp_config['timelimit']}, 
+                    cplexPath = "{self.ilp_config['cplexPath']}", method = "{self.ilp_config['method']}", 
+                    numSolutions = {self.ilp_config['numSolutions']}, limitPop = {self.ilp_config['limitPop']}, 
+                    poolIntensity = {self.ilp_config['poolIntensity']}, poolReplace = {self.ilp_config['poolReplace']});
                 endILP <- Sys.time();                
                 CellNOptR:::cleanupILP();
                 opt_results <- resILP;                
@@ -268,16 +263,13 @@ class CellNOptAnalyzer:
         Evaluate the model using the CellNOptR package
         """
         print("Evaluating model...")
-        from AttractorAnalysis import AttractorAnalysis
+        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(output_dir, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
         
-        AA = AttractorAnalysis(
-            origFile=self.GD_MODEL,
-            modifiedFiles=opt_fname,
-        )
-        results = AA.run_analysis()
+        AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
+        results = AA.comparison()
         
         if 'ilp' in output_dir:
             results['total_time'] = r('opt_results$cpu_time')
@@ -291,16 +283,7 @@ class CellNOptAnalyzer:
 
         return results  
     
-    def run_full_analysis(self, method="ga", numSol=3, relGap=0.05,):
-        """
-        Run complete CellNOpt analysis pipeline
-        Args:
-            file (str): Path to network file
-            midas_file (str): Path to MIDAS data file
-            output_dir (str): Output directory for results
-            numSol (int): Number of solutions for ILP optimization
-            relGap (float): Relative gap for ILP optimization
-        """
+    def run_full_analysis(self, method="ga"):
         # Load network and data
         model = self.load_network()
         cnolist = self.load_data()
@@ -312,8 +295,7 @@ class CellNOptAnalyzer:
         output_file = os.path.join(self.output_file, method)                
         os.makedirs(output_file, exist_ok=True)
         print(f"Optimizing with method: {method}")
-        opt_results = self.optimize_network(PLOT=True, method=method,
-                                numSol=3, relGap=0.05, output_file=output_file)
+        opt_results = self.optimize_network(PLOT=True, method=method, output_file=output_file)
 
         # Save results
         self.save_results(output_file)
@@ -325,7 +307,7 @@ class CellNOptAnalyzer:
         print("Analysis completed successfully!")
         return model, cnolist, results
 
-def main(dataset="toy", ChangePct=0.1, method="ga"):
+def main(dataset="toy", method="ga", manager=None):
     """Example usage of CellNOptAnalyzer"""
     
     # file = "data/apoptosis.xml"
@@ -336,16 +318,21 @@ def main(dataset="toy", ChangePct=0.1, method="ga"):
     # Create analyzer and run analysis
     analyzer = CellNOptAnalyzer(
         dataset=dataset,
-        ChangePct=ChangePct
+        manager=manager
     )
 
     model, cnolist, results = analyzer.run_full_analysis(
-        method=method,
-        numSol=3,
-        relGap=0.05
+        method=method
     )
     return model, cnolist, results
 
 if __name__ == "__main__":
     # model, cnolist, results = main(Test=True, method="ilp")
-    model, cnolist, results = main(dataset="toy", ChangePct=0.1, method="ga")
+    from tools.config import NetworkPerturbationConfig, AdaptiveParameterManager
+    config = NetworkPerturbationConfig(
+        change_percent=0.,
+        size_adaptation_strength=2.0,
+        generalization_focus=True
+    )
+    manager = AdaptiveParameterManager(config)
+    model, cnolist, results = main(dataset="toy", method="ga", manager=manager)

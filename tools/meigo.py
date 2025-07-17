@@ -11,11 +11,12 @@ from tools.config import dataset_map
 
 
 class MEIGOOptimizer:
-    def __init__(self, dataset="toy", ChangePct=0.1):
+    def __init__(self, dataset="toy", manager=None):
         """Initialize the MEIGO analyzer"""
         self.cellnoptr = importr('MEIGOR')
-        self.PERTUB = True if ChangePct > 0 else False
-        self.ChangePct = ChangePct
+        self.PERTUB = True if manager.change_percent > 0 else False
+        self.ChangePct = manager.change_percent
+        self.vns_config = manager.get_vns_config()
         self.parse(dataset)
         print("MEIGO loaded successfully")
         
@@ -23,7 +24,7 @@ class MEIGOOptimizer:
         if dataset not in dataset_map:
             raise ValueError(f"Unknown dataset: {dataset}")
 
-        base_name, sif_name, rdata_name, midas_name, bnet_name = dataset_map[dataset]
+        base_name, sif_name, rdata_name, midas_name, bnet_name, _ = dataset_map[dataset]
         self.dataset = base_name
         self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
         self.input_path = os.path.join("data", base_name, self.filename)
@@ -119,7 +120,7 @@ class MEIGOOptimizer:
     def run_vns(self):        
         r('library(here)')
         r('source(here::here("tools", "functions.R"))')   
-        
+
         r(f'''
             get_fobj <- function(cnolist, model){{
                 f <- function(x, model1=model, cnolist1=cnolist){{
@@ -132,8 +133,12 @@ class MEIGOOptimizer:
             fobj <- get_fobj(cnolist, model)
             nvar <- ncol(model$interMat)
             problem <- list(f=fobj, x_L=rep(0, nvar), x_U=rep(1, nvar))
-            opts <- list(maxeval=2000, maxtime=30, use_local=1,
-                aggr=0, local_search_type=1, decomp=1, maxdist=0.5)
+            opts <- list(
+                maxeval={self.vns_config['maxeval']}, maxtime={self.vns_config['maxtime']}, 
+                use_local={self.vns_config['use_local']}, aggr={self.vns_config['aggr']}, 
+                local_search_type={self.vns_config['local_search_type']}, 
+                decomp={self.vns_config['decomp']}, maxdist={self.vns_config['maxdist']},
+                iterprint={self.vns_config['iterprint']})
             Results_VNS <- MEIGO(problem, opts, "VNS")
             optModel <- cutModel(model, Results_VNS$xbest)
             plotModel(optModel,cnolist)
@@ -167,16 +172,13 @@ class MEIGOOptimizer:
 
     def evaluate_model(self, output_dir):
         print("Evaluating model...")
-        from AttractorAnalysis import AttractorAnalysis
+        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(output_dir, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
         
-        AA = AttractorAnalysis(
-            origFile=self.GD_MODEL,
-            modifiedFiles=opt_fname,
-        )
-        results = AA.run_analysis()
+        AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
+        results = AA.comparison()
         
         results['total_time'] = r('Results_VNS$cpu_time')
         results['method']     = "VNS"
@@ -310,7 +312,15 @@ class MEIGOOptimizer:
 
 # Example usage:
 if __name__ == "__main__":
-    optimizer = MEIGOOptimizer(dataset="toy", ChangePct=0)
+    from tools.config import NetworkPerturbationConfig, AdaptiveParameterManager
+    config = NetworkPerturbationConfig(
+        change_percent=0.0,
+        size_adaptation_strength=2.0,
+        generalization_focus=True
+    )
+    manager = AdaptiveParameterManager(config)
+    
+    optimizer = MEIGOOptimizer(dataset="toy", manager=manager)
     model, cnolist, vns_results = optimizer.run_full_analysis("VNS")
     model, cnolist, ess_results = optimizer.run_full_analysis("ESS")
     print("VNS and ESS optimization completed in R via rpy2.")
@@ -318,7 +328,7 @@ if __name__ == "__main__":
     print("ESS Results:", ess_results)
     
     # Test for general data
-    optimizer = MEIGOOptimizer(dataset="toy", ChangePct=0.9)
+    optimizer = MEIGOOptimizer(dataset="toy", manager=manager)
     model, cnolist, vns_results = optimizer.run_full_analysis("VNS")
     print("VNS optimization completed in R via rpy2.")
     print("VNS Results:", vns_results)

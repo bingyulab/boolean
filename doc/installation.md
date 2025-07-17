@@ -68,3 +68,14 @@ pip install git+https://github.com/DEAP/deap@master
 pip install git+https://github.com/hklarner/pyboolnet@master
 pip install pydot igraph cairosvg pygraphviz
 ```
+
+
+#### Remove Large Files from Git History
+
+1. Download ![BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/)
+2. From your repo root, run:
+```bash
+java -jar bfg.jar --delete-files cplex_studio2211.linux_x86_64.bin
+git reflog expire --expire=now --all && git gc --prune=now --aggressive
+git push origin main --force
+```

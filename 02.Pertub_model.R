@@ -109,28 +109,28 @@ runPerturbPipeline <- function(dataset     = "toy",
     perturbed_boolnet <- boolnet
     num_genes_to_perturb <- floor(change_pct * length(perturbed_boolnet$genes))
 
-    # Randomly sample genes for perturbation
-    genes_to_perturb <- sample(perturbed_boolnet$genes, num_genes_to_perturb)
+    total_bits <- sum(sapply(perturbed_boolnet$interactions, 
+                       function(g) length(g$func)))
 
+    # Determine bits to flip 
+    bits_to_flip <- round(change_pct * total_bits)
     message(sprintf("Applying functions perturbation with shuffle method for %d genes", 
-                num_genes_to_perturb))
-    for (g in genes_to_perturb) {
-      k      <- length(perturbed_boolnet$genesConnection[[g]])
-      
-      # Scale perturbation based on gene complexity
-      perturbation_scale <- min(1, max(0.1, 1/k))
-      bits <- 2^k
-      toFlip <- max(1, floor(perturbation_scale * bits))
-      message(sprintf("Applying functions perturbation with shuffle method for %f genes", 
-              toFlip))
+                bits_to_flip))
+    for(g in perturbed_boolnet$genes) {
+      inputs  <- perturbed_boolnet$interactions[[g]]
+      k       <- length(inputs)
+      bits    <- 2^k
+      # compute how many bits to flip (but leave at least one bit intact)
+      toFlip  <- min(floor(pct * bits), bits - 1)      
       perturbed_boolnet <- perturbNetwork(
         perturbed_boolnet,
         perturb       = "functions",
-        method        = "shuffle",
+        method        = "bitflip",
         excludeFixed  = TRUE, # prevent perturbation of fixed variable
         maxNumBits    = toFlip, # ensuring that each modification represents a single logical change
         simplify      = FALSE,  # preserve the original network complexity and prevent automatic simplification
-        )
+        readableFunctions = TRUE
+      )
     }
   }, error = function(e) {
     stop(sprintf("Network perturbation failed: %s", e$message))

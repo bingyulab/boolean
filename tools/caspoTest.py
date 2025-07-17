@@ -6,29 +6,26 @@ import time
 from tools.config import dataset_map
 
 
+def configure_mt(config, proxy, overwrite=None):
+    proxy.solve.parallel_mode = config['threads']
+    proxy.configuration = config['conf']
+    if overwrite:
+        overwrite(config, proxy)
+
+
 class CaspoOptimizer:
-    def __init__(self, 
-                 dataset="toy", ChangePct=0.1,
-                 optimum=None, fit=0.4, size=0, factor=100, 
-                 discretization='round', length=0, 
-                 threads=None, conf="many"):
-        self.PERTUB = True if ChangePct > 0 else False
-        self.ChangePct = ChangePct
+    def __init__(self, dataset="toy", manager=None,):
+        self.PERTUB = True if manager.change_percent > 0 else False
+        self.ChangePct = manager.change_percent
         self.parse(dataset)
-        self.optimum = optimum
-        self.fit = fit
-        self.size = size
-        self.factor = factor
-        self.discretization = discretization
-        self.length = length
-        self.threads = threads
-        self.conf = conf
+        self.config = manager.get_caspo_config()
 
     def parse(self, dataset):
         if dataset not in dataset_map:
             raise ValueError(f"Unknown dataset: {dataset}")
 
-        base_name, sif_name, rdata_name, midas_name, bnet_name = dataset_map[dataset]
+        base_name, sif_name, rdata_name, midas_name, bnet_name, time = dataset_map[dataset]
+        self.time = time
         self.dataset = base_name
         self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
         self.input_path = os.path.join("data", base_name, self.filename)
@@ -61,7 +58,7 @@ class CaspoOptimizer:
         order = ["mapping", "frequency", "inclusive", "exclusive"]
         df[order].to_csv(os.path.join(self.output_file, 'stats-networks.csv'), index=False)
         visualize.mappings_frequency(df, self.output_file)
-        from functions import convert_caspo_csv_format
+        from tools.functions import convert_caspo_csv_format
         convert_caspo_csv_format(df, os.path.join(self.output_file, f'OPT_{self.dataset}.bnet'))
         
     def save_networks(self, learner, dataset):
@@ -71,21 +68,18 @@ class CaspoOptimizer:
 
     def evaluate_model(self, total_time):
         print("Evaluating model...")
-        from AttractorAnalysis import AttractorAnalysis
+        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
-        opt_fname = os.path.join(output_dir, fname)
+        opt_fname = os.path.join(self.output_file, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
-        
-        AA = AttractorAnalysis(
-            origFile=self.GD_MODEL,
-            modifiedFiles=opt_fname,
-        )
-        results = AA.run_analysis()
+
+        AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
+        results = AA.comparison()
         
         results['total_time'] = total_time
         results['method']     = "Caspo"
         results['change_percent']     = self.ChangePct
-        # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
+        # results.to_csv(os.path.join(self.output_file, "results.csv"), index=False)
         
         return results    
     
@@ -95,15 +89,17 @@ class CaspoOptimizer:
         zipped = graph.compress(dataset.setup)
 
         start_time = time.time()
-        learner = learn.Learner(zipped, dataset, self.length, self.discretization, self.factor)
+        learner = learn.Learner(
+            zipped, dataset, self.config['length'], 
+            self.config['discretization'], self.config['factor'])
         total_time = time.time() - start_time
         print("Number of hyperedges (possible logical mappings) derived from the compressed PKN: %d" % len(learner.hypergraph.hyper))
 
-        if self.optimum:
-            learner.optimum = core.LogicalNetworkList.from_csv(self.optimum)[0]
+        # if self.optimum:
+        #     learner.optimum = core.LogicalNetworkList.from_csv(self.optimum)[0]
 
-        configure = ft.partial(self.configure_mt) if self.threads else None
-        learner.learn(self.fit, self.size, configure)
+        configure = ft.partial(configure_mt, self.config) if self.config['threads'] else None
+        learner.learn(self.config['fit'], self.config['size'], configure)
 
         print("Weighted MSE: %.4f" % learner.networks.weighted_mse(dataset))
 
@@ -114,7 +110,15 @@ class CaspoOptimizer:
         
 # Example usage:
 if __name__ == "__main__":
+    
+    from tools.config import NetworkPerturbationConfig, AdaptiveParameterManager
+    config = NetworkPerturbationConfig(
+        change_percent=0.0,
+        size_adaptation_strength=2.0,
+        generalization_focus=True
+    )
+    manager = AdaptiveParameterManager(config)
     runner = CaspoOptimizer(
-        dataset="toy", ChangePct=0.1,
+        dataset="toy", manager=manager
     )
     runner.run()

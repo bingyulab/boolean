@@ -26,6 +26,23 @@ During initial testing, we observed that higher perturbation levels frequently r
 
 Note: parameter tuning may not always yield larger models, as the optimization algorithms may still converge to smaller solutions that fit the data well. However, it is expected to mitigate excessive model reduction in many cases.
 
+**Implementation Details**: The core principle is that as perturbation increases, we need to adjust parameters to:
+    1. Maintain reasonable network sizes (prevent over-shrinking)
+    2. Improve generalization by controlling overfitting
+    3. Ensure consistent performance across perturbation levels
+
+First, calculate how much to adjust parameters based on perturbation level. The logic here is:
+- As perturbation increases, we reduce size penalties to maintain network size
+- We increase population diversity to improve robustness
+- We adjust termination criteria to allow more exploration
+
+We have following four parameters to adjust:
+1. **Size factor adjustment**: **decrease** penalties as perturbation increases, which prevents networks from becoming too small at high perturbation levels
+2. **Exploration factor**: **increase** exploration as perturbation increases, which helps algorithms find better solutions in perturbed landscapes
+3. **Tolerance factor**: **increase** tolerance as perturbation increases, which allows more flexibility in fitting to potentially noisy data
+4. **Population factor**: **increase** population diversity as perturbation increases, which helps to explore a wider solution space and avoid local minima
+
+
 ### Challenge 2: Attractor Length Discrepancy
 
 A critical methodological issue emerged regarding attractor comparison when reconstructed models contain different node sets than the original model. Direct comparison becomes problematic when state spaces differ in dimensionality, leading to potentially biased similarity assessments.
