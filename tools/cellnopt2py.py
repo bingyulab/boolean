@@ -205,6 +205,20 @@ class CellNOptAnalyzer:
                 optModel$notMat <- matrix(0, nrow=n, ncol=m)
                 rownames(optModel$notMat) <- rownames(optModel$interMat)
                 colnames(optModel$notMat) <- colnames(optModel$interMat)
+                
+                for (j in seq_along(optModel$reacID)) {{
+                    rid <- optModel$reacID[j]
+                    print(paste("Processing reaction ID:", rid))
+                    is_not <- startsWith(rid, "!")
+                    rid_clean <- sub("^!", "", rid)
+                    parts <- strsplit(rid_clean, "=")[[1]]
+                    src <- parts[1]
+                    tgt <- parts[2]
+                    if (is_not) {{
+                        print(paste("Adding NOT reaction:", src, "->", rid))
+                        optModel$notMat[src, rid] <- 1
+                    }}
+                }}
             }}
         ''')
         sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
