@@ -1,9 +1,12 @@
-from caspo import core, learn, visualize
+from caspo import core, learn
 import pandas as pd
 import os
 import functools as ft
 import time
 from tools.config import dataset_map
+import seaborn as sns
+from matplotlib import pyplot as plt
+from tools.comparison import limit_float, AttractorAnalysis
 
 
 def configure_mt(config, proxy, overwrite=None):
@@ -12,6 +15,64 @@ def configure_mt(config, proxy, overwrite=None):
     if overwrite:
         overwrite(config, proxy)
 
+def mappings_frequency(df, filepath=None):
+    df = df.sort_values('frequency')
+    df['conf'] = df.frequency.map(lambda f: 0 if f < 0.2 else 1 if f < 0.8 else 2)
+
+    g = sns.catplot(x="mapping", y="frequency", data=df, aspect=3, hue='conf',
+            legend=False, kind="point")
+    for tick in g.ax.get_xticklabels():
+        tick.set_rotation(90)
+
+    g.ax.set_ylim([-.05, 1.05])
+
+    g.ax.set_xlabel("Logical mapping")
+    g.ax.set_ylabel("Frequency")
+
+    if filepath:
+        g.savefig(os.path.join(filepath, 'mappings-frequency.pdf'))
+
+    return g
+
+def networks_distribution(df, filepath=None):
+    df.mse = df.mse.map(lambda f: "%.4f" % f)
+
+    g = sns.JointGrid(x="mse", y="size", data=df)
+
+    g.plot_joint(sns.violinplot, scale='count')
+    g.ax_joint.set_yticks(list(range(df['size'].min(), df['size'].max() + 1)))
+    g.ax_joint.set_yticklabels(list(range(df['size'].min(), df['size'].max() + 1)))
+
+    for tick in g.ax_joint.get_xticklabels():
+        tick.set_rotation(90)
+
+    g.ax_joint.set_xlabel("MSE")
+    g.ax_joint.set_ylabel("Size")
+
+    for i, t in enumerate(g.ax_joint.get_xticklabels()):
+        c = df[df['mse'] == t.get_text()].shape[0]
+        g.ax_marg_x.annotate(c, xy=(i, 0.5), va="center", ha="center", size=20, rotation=90)
+
+    for i, t in enumerate(g.ax_joint.get_yticklabels()):
+        s = int(t.get_text())
+        c = df[df['size'] == s].shape[0]
+        g.ax_marg_y.annotate(c, xy=(0.5, s), va="center", ha="center", size=20)
+
+    if filepath:
+        g.savefig(os.path.join(filepath, 'networks-distribution.pdf'))
+
+    plt.figure()
+    counts = df[["size", "mse"]].reset_index(level=0).groupby(["size", "mse"], as_index=False).count()
+    cp = counts.pivot(index="size", columns="mse", values="index").sort_index()
+
+    ax = sns.heatmap(cp, annot=True, fmt=".0f", linewidths=.5)
+    ax.set_xlabel("MSE")
+    ax.set_ylabel("Size")
+
+    if filepath:
+        plt.savefig(os.path.join(filepath, 'networks-heatmap.pdf'))
+
+    return g, ax
 
 class CaspoOptimizer:
     def __init__(self, dataset="toy", manager=None,):
@@ -57,18 +118,17 @@ class CaspoOptimizer:
         df = pd.DataFrame(rows)
         order = ["mapping", "frequency", "inclusive", "exclusive"]
         df[order].to_csv(os.path.join(self.output_file, 'stats-networks.csv'), index=False)
-        visualize.mappings_frequency(df, self.output_file)
+        mappings_frequency(df, self.output_file)
         from tools.functions import convert_caspo_csv_format
         convert_caspo_csv_format(df, os.path.join(self.output_file, f'OPT_{self.dataset}.bnet'))
         
     def save_networks(self, learner, dataset):
         df = learner.networks.to_dataframe(dataset=dataset, size=True)
         df.to_csv(os.path.join(self.output_file, 'networks.csv'), index=False)
-        visualize.networks_distribution(df, self.output_file)
+        networks_distribution(df, self.output_file)
 
     def evaluate_model(self, total_time):
         print("Evaluating model...")
-        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(self.output_file, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
@@ -76,11 +136,10 @@ class CaspoOptimizer:
         AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
         results = AA.comparison()
         
-        results['total_time'] = total_time
-        results['method']     = "Caspo"
-        results['change_percent']     = self.ChangePct
+        results['total_time']         = limit_float(total_time)
+        results['method']             = "Caspo"
+        results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(self.output_file, "results.csv"), index=False)
-        
         return results    
     
     def run(self):
@@ -106,7 +165,7 @@ class CaspoOptimizer:
         self.save_stats(learner, dataset)
         self.save_networks(learner, dataset)
         results = self.evaluate_model(total_time)
-        
+        return results
         
 # Example usage:
 if __name__ == "__main__":

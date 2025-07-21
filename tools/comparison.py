@@ -8,9 +8,24 @@ from pyboolnet.prime_implicants import create_variables
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import jaccard, hamming
+from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
 from itertools import combinations
 import warnings
+from rpy2.robjects.vectors import FloatVector
+
+
+
+def limit_float(x):
+    # print(f"Limiting float: {x}, type: {type(x)}")
+    if isinstance(x, FloatVector):
+        x = float(x[0])
+    else:
+        x = float(x)
+    s = str(x)
+    if '.' in s and len(s.split('.')[1]) > 2:
+        return round(x, 2)
+    return x
 
 
 class AttractorAnalysis:
@@ -74,7 +89,7 @@ class AttractorComparison:
     handling variable network sizes and attractor counts.
     """
     
-    def __init__(self, original_attractors, reconstructed_attractors):
+    def __init__(self, original_attractors, reconstructed_attractors, threshold=0.9):
         """
         Initialize the comparison with original and reconstructed attractors.
         
@@ -87,10 +102,20 @@ class AttractorComparison:
         """
         self.original_attractors = original_attractors
         self.reconstructed_attractors = reconstructed_attractors
+        self.threshold = threshold
+
+        # Identify common nodes and project
         self.common_nodes = self._find_common_nodes()
-        self.original_projected = self._project_attractors(original_attractors)
-        self.reconstructed_projected = self._project_attractors(reconstructed_attractors)
-    
+        self.original_projected = self._project_attractors(self.original_attractors)
+        self.reconstructed_projected = self._project_attractors(self.reconstructed_attractors)
+
+        # Build binary matrices
+        self.orig_vecs = self._to_matrix(self.original_projected)
+        self.recon_vecs = self._to_matrix(self.reconstructed_projected)
+
+        # Precompute similarity matrix & matching
+        self._compute_matching()
+        
     def _find_common_nodes(self):
         """Find nodes present in both original and reconstructed networks."""
         if not self.original_attractors or not self.reconstructed_attractors:
@@ -110,6 +135,32 @@ class AttractorComparison:
             projected.append(projected_state)
         return projected
     
+    def _to_matrix(self, proj):
+        if not proj or not self.common_nodes:
+            return np.zeros((0, 0), dtype=bool)
+        mat = np.array([[att[n] for n in self.common_nodes] for att in proj], dtype=bool)
+        return mat
+    
+    def _compute_matching(self):
+        n, m = len(self.orig_vecs), len(self.recon_vecs)
+        size = max(n, m)
+        S = np.zeros((size, size), dtype=float)
+
+        # Fill similarity matrix
+        for i in range(n):
+            for j in range(m):
+                # Jaccard distance on boolean vectors
+                S[i, j] = 1 - jaccard(self.orig_vecs[i], self.recon_vecs[j])
+
+        # Hungarian assignment
+        cost = -S
+        row, col = linear_sum_assignment(cost)
+        pairs = [(i, j) for i, j in zip(row, col) if i < n and j < m]
+        self.match_sims = [S[i, j] for i, j in pairs]
+        
+    def compute_global_jaccard(self):
+        return limit_float(np.mean(self.match_sims) if self.match_sims else 0.0)
+
     def compute_jaccard_similarity(self):
         """
         Compute Jaccard similarity between attractor sets.
@@ -151,6 +202,22 @@ class AttractorComparison:
         
         return np.mean(matches) if matches else 0.0
     
+    def compute_global_hamming(self):
+        """Mean Hamming similarity over optimal one-to-one matching."""
+        # Recompute with hamming if needed
+        n, m = len(self.orig_vecs), len(self.recon_vecs)
+        if not (n and m):
+            return 0.0
+        size = max(n, m)
+        H = np.zeros((size, size), dtype=float)
+        for i in range(n):
+            for j in range(m):
+                H[i, j] = 1 - hamming(self.orig_vecs[i], self.recon_vecs[j])
+        cost = -H
+        row, col = linear_sum_assignment(cost)
+        sims = [H[i, j] for i, j in zip(row, col) if i<n and j<m]
+        return limit_float(np.mean(sims) if sims else 0.0)
+    
     def compute_hamming_similarity(self):
         """
         Compute normalized Hamming similarity between attractor sets.
@@ -190,6 +257,23 @@ class AttractorComparison:
         
         return np.mean(matches) if matches else 0.0
     
+    def compute_coverage(self):
+        """
+        Decoupled precision/recall with threshold.
+        """
+        tp = sum(1 for sim in self.match_sims if sim >= self.threshold)
+        prec = tp / len(self.reconstructed_projected) if self.reconstructed_projected else 0.0
+        rec  = tp / len(self.original_projected)  if self.original_projected  else 0.0
+        f1   = (2*prec*rec/(prec+rec)) if (prec+rec)>0 else 0.0
+        return {
+            'precision': limit_float(prec),
+            'recall':    limit_float(rec),
+            'f1_score':  limit_float(f1),
+            'true_positives': tp,
+            'orig_total': len(self.original_projected),
+            'recon_total': len(self.reconstructed_projected)
+        }
+        
     def compute_coverage_metrics(self):
         """
         Compute coverage metrics for attractor comparison.
@@ -211,9 +295,9 @@ class AttractorComparison:
         f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
         
         return {
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1_score,
+            'precision': limit_float(precision),
+            'recall': limit_float(recall),
+            'f1_score': limit_float(f1_score),
             'exact_matches': len(intersection),
             'total_original': len(orig_set),
             'total_reconstructed': len(recon_set)
@@ -243,12 +327,12 @@ class AttractorComparison:
         diversity_correlation = 1 - abs(orig_diversity - recon_diversity)
         
         return {
-            'stability_correlation': diversity_correlation,
-            'size_ratio': size_ratio,
+            'stability_correlation': limit_float(diversity_correlation),
+            'size_ratio': limit_float(size_ratio),
             'original_count': orig_count,
             'reconstructed_count': recon_count,
-            'original_diversity': orig_diversity,
-            'reconstructed_diversity': recon_diversity
+            'original_diversity': limit_float(orig_diversity),
+            'reconstructed_diversity': limit_float(recon_diversity)
         }
     
     def compute_functional_similarity(self):
@@ -286,8 +370,8 @@ class AttractorComparison:
             activity_correlation = 0.0
         
         return {
-            'functional_similarity': activity_correlation,
-            'pattern_overlap': pattern_overlap,
+            'functional_similarity': limit_float(activity_correlation),
+            'pattern_overlap': limit_float(pattern_overlap),
             'common_patterns': len(common_patterns),
             'total_patterns': len(all_patterns)
         }
@@ -302,38 +386,42 @@ class AttractorComparison:
         """
         results = {
             'common_nodes': len(self.common_nodes),
-            'common_node_list': sorted(list(self.common_nodes)),
-            'jaccard_similarity': self.compute_jaccard_similarity(),
-            'hamming_similarity': self.compute_hamming_similarity(),
-            'coverage_metrics': self.compute_coverage_metrics(),
-            'basin_stability': self.compute_basin_stability_comparison(),
-            'functional_similarity': self.compute_functional_similarity()
+            # 'common_node_list': sorted(list(self.common_nodes)),
+            # 'jaccard_similarity': limit_float(self.compute_jaccard_similarity()),
+            # 'hamming_similarity': limit_float(self.compute_hamming_similarity()),
+            # 'coverage_metrics': self.compute_coverage_metrics(),            
+            'jaccard_similarity': self.compute_global_jaccard(),
+            'hamming_similarity': self.compute_global_hamming(),
+            'coverage_metrics': self.compute_coverage(),
+            # 'basin_stability': self.compute_basin_stability_comparison(),
+            # 'functional_similarity': self.compute_functional_similarity()
         }
         
         # Compute composite score
         weights = {
             'jaccard': 0.3,
             'hamming': 0.3,
-            'coverage_f1': 0.2,
-            'functional': 0.2
+            'coverage_f1': 0.4
         }
         
         composite_score = (
             weights['jaccard'] * results['jaccard_similarity'] +
             weights['hamming'] * results['hamming_similarity'] +
-            weights['coverage_f1'] * results['coverage_metrics']['f1_score'] +
-            weights['functional'] * results['functional_similarity']['functional_similarity']
+            weights['coverage_f1'] * results['coverage_metrics']['f1_score'] 
         )
         
-        results['composite_score'] = composite_score
+        results['composite_score'] = limit_float(composite_score)
         
         return self.to_dataframe(results) if Return_DF else results
     
     def to_dataframe(self, results):
         flat = results.copy()
-        flat.update(flat.pop('coverage_metrics'))
-        flat.update(flat.pop('basin_stability'))
-        flat.update(flat.pop('functional_similarity'))
+        if 'coverage_metrics' in flat:
+            flat['coverage_metrics'] = flat.pop('coverage_metrics')
+        if 'basin_stability' in flat:
+            flat['basin_stability'] = flat.pop('basin_stability')
+        if 'functional_similarity' in flat:
+            flat['functional_similarity'] = flat.pop('functional_similarity')
 
         # Create DataFrame
         df = pd.DataFrame([flat])
@@ -408,12 +496,12 @@ def demonstrate_attractor_comparison():
     # Display results
     print("Attractor Comparison Results:")
     print(f"Common nodes: {results['common_nodes']}")
-    print(f"Common node list: {results['common_node_list']}")
-    print(f"Jaccard similarity: {results['jaccard_similarity']:.3f}")
-    print(f"Hamming similarity: {results['hamming_similarity']:.3f}")
-    print(f"Coverage F1-score: {results['coverage_metrics']['f1_score']:.3f}")
-    print(f"Functional similarity: {results['functional_similarity']['functional_similarity']:.3f}")
-    print(f"Composite score: {results['composite_score']:.3f}")
+    # print(f"Common node list: {results['common_node_list']}")
+    print(f"Jaccard similarity: {results['jaccard_similarity'].iloc[0]:.3f}")
+    print(f"Hamming similarity: {results['hamming_similarity'].iloc[0]:.3f}")
+    print(f"Coverage F1-score: {results['coverage_metrics'].iloc[0]['f1_score']:.3f}")
+    # print(f"Functional similarity: {results['functional_similarity']['functional_similarity']:.3f}")
+    print(f"Composite score: {results['composite_score'].iloc[0]:.3f}")
     
     return results
 

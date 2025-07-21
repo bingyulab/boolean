@@ -8,6 +8,7 @@ import os
 import shutil
 import json
 from tools.config import dataset_map
+from tools.comparison import limit_float, AttractorAnalysis
 
 
 class MEIGOOptimizer:
@@ -139,16 +140,17 @@ class MEIGOOptimizer:
                 local_search_type={self.vns_config['local_search_type']}, 
                 decomp={self.vns_config['decomp']}, maxdist={self.vns_config['maxdist']},
                 iterprint={self.vns_config['iterprint']})
-            Results_VNS <- MEIGO(problem, opts, "VNS")
+            t <- system.time(Results_VNS <- MEIGO(problem, opts, "VNS"))
             optModel <- cutModel(model, Results_VNS$xbest)
             plotModel(optModel,cnolist)
-            assign("optModel_VNS", optModel, envir = .GlobalEnv)
+            assign("optModel_VNS", Results_VNS, envir = .GlobalEnv)
             simResults <- simulate_CNO(model=model,#_orig,
                                 CNOlist=cnolist,
                                 bString=optModel$xbest)
             save(simResults,file="{self.output_file}/evolSimRes.RData")                    
         ''')
         print("VNS optimization completed.")
+        
 
     def run_ess(self):
         r('''
@@ -172,17 +174,16 @@ class MEIGOOptimizer:
 
     def evaluate_model(self, output_dir):
         print("Evaluating model...")
-        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(output_dir, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
         
         AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
         results = AA.comparison()
-        
-        results['total_time'] = r('Results_VNS$cpu_time')
-        results['method']     = "VNS"
-        results['change_percent']     = self.ChangePct
+
+        results['total_time']         = limit_float(r('t[["elapsed"]]'))
+        results['method']             = "VNS"
+        results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
         
         return results
@@ -192,27 +193,7 @@ class MEIGOOptimizer:
         r('library(here)')
         r('source(here::here("tools", "functions.R"))')
         r(f'''
-            if (ncol(optModel$notMat) == 0) {{
-                n <- nrow(optModel$interMat)
-                m <- ncol(optModel$interMat)
-                optModel$notMat <- matrix(0, nrow=n, ncol=m)
-                rownames(optModel$notMat) <- rownames(optModel$interMat)
-                colnames(optModel$notMat) <- colnames(optModel$interMat)
-                
-                for (j in seq_along(optModel$reacID)) {{
-                    rid <- optModel$reacID[j]
-                    print(paste("Processing reaction ID:", rid))
-                    is_not <- startsWith(rid, "!")
-                    rid_clean <- sub("^!", "", rid)
-                    parts <- strsplit(rid_clean, "=")[[1]]
-                    src <- parts[1]
-                    tgt <- parts[2]
-                    if (is_not) {{
-                        print(paste("Adding NOT reaction:", src, "->", rid))
-                        optModel$notMat[src, rid] <- 1
-                    }}
-                }}
-            }}
+            optModel <- processOptimizedModel(optModel)
         ''')
                         
         sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
@@ -232,13 +213,17 @@ class MEIGOOptimizer:
         
         try:
             r(f'''            
-                SIFToBoolNet(sifFile     = "{sif_fname}",
-                            boolnetFile = "{boolnet_fname}",
-                            CNOlist     = cnolist,
-                            model       = optModel,
-                            fixInputs   = FALSE,
-                            preprocess  = TRUE,
-                            ignoreAnds  = TRUE)
+                # SIFToBoolNet(sifFile     = "{sif_fname}",
+                #             boolnetFile = "{boolnet_fname}",
+                #             CNOlist     = cnolist,
+                #             model       = optModel,
+                #             fixInputs   = FALSE,
+                #             preprocess  = TRUE,
+                #             ignoreAnds  = TRUE)                    
+                
+                result <- writeBnetFromModel(optModel, "{boolnet_fname}")
+
+                verifyBoolNetConversion(optModel, "{boolnet_fname}")
             ''')
             
             # Check if the output file was actually created and is not empty

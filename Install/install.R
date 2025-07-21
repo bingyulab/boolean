@@ -1,5 +1,10 @@
 #!/usr/bin/env Rscript
 
+options(repos = c(
+  CRAN  = "https://cloud.r-project.org",                  # a globally‑replicated CRAN mirror
+  BioC  = "https://bioconductor.org/packages/3.18/bioc"    # (optional) Bioconductor mirror
+))
+
 # Install BiocManager if needed
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -9,12 +14,9 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
 packages_to_install <- c(
     "MEIGOR",
     "CellNOptR",
-    "graph",
-    "Rgraphviz",
-    "Cairo",
     "BoolNet",
     "here",
-    "optparse",
+    "optparse"
 )
 
 cat("Installing packages...\n")

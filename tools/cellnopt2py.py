@@ -9,6 +9,7 @@ import sys
 from rpy2.robjects.packages import importr
 from rpy2.robjects import r
 from tools.config import dataset_map
+from tools.comparison import limit_float, AttractorAnalysis
 
         
 class CellNOptAnalyzer:
@@ -166,13 +167,14 @@ class CellNOptAnalyzer:
             r(f'''  
                 startILP <- Sys.time();
                 print("Creating LP file and running ILP...");   
-                resILP <- CellNOptR:::createAndRunILP(
+                t <- system.time(resILP <- CellNOptR:::createAndRunILP(
                     model, md, cnolistReal, accountForModelSize = {self.ilp_config['accountForModelSize']}, 
                     sizeFac = {self.ilp_config['sizeFac']}, mipGap={self.ilp_config['mipGap']}, 
                     relGap={self.ilp_config['relGap']}, timelimit={self.ilp_config['timelimit']}, 
                     cplexPath = "{self.ilp_config['cplexPath']}", method = "{self.ilp_config['method']}", 
                     numSolutions = {self.ilp_config['numSolutions']}, limitPop = {self.ilp_config['limitPop']}, 
-                    poolIntensity = {self.ilp_config['poolIntensity']}, poolReplace = {self.ilp_config['poolReplace']});
+                    poolIntensity = {self.ilp_config['poolIntensity']}, poolReplace = {self.ilp_config['poolReplace']})
+                    );
                 endILP <- Sys.time();                
                 CellNOptR:::cleanupILP();
                 opt_results <- resILP;                
@@ -199,27 +201,7 @@ class CellNOptAnalyzer:
         r('library(here)')
         r('source(here::here("tools", "functions.R"))')
         r(f'''
-            if (ncol(optModel$notMat) == 0) {{
-                n <- nrow(optModel$interMat)
-                m <- ncol(optModel$interMat)
-                optModel$notMat <- matrix(0, nrow=n, ncol=m)
-                rownames(optModel$notMat) <- rownames(optModel$interMat)
-                colnames(optModel$notMat) <- colnames(optModel$interMat)
-                
-                for (j in seq_along(optModel$reacID)) {{
-                    rid <- optModel$reacID[j]
-                    print(paste("Processing reaction ID:", rid))
-                    is_not <- startsWith(rid, "!")
-                    rid_clean <- sub("^!", "", rid)
-                    parts <- strsplit(rid_clean, "=")[[1]]
-                    src <- parts[1]
-                    tgt <- parts[2]
-                    if (is_not) {{
-                        print(paste("Adding NOT reaction:", src, "->", rid))
-                        optModel$notMat[src, rid] <- 1
-                    }}
-                }}
-            }}
+            optModel <- processOptimizedModel(optModel)
         ''')
         sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
         rdata_fname = os.path.join(output_dir, f"OPT_{self.dataset}.RData")
@@ -236,13 +218,17 @@ class CellNOptAnalyzer:
         ''')
         print(f"Saving BoolNet to {boolnet_fname}...")
         r(f'''            
-            SIFToBoolNet(sifFile     = "{sif_fname}",
-                        boolnetFile = "{boolnet_fname}",
-                        CNOlist     = cnolist,
-                        model       = optModel,
-                        fixInputs   = FALSE,
-                        preprocess  = TRUE,
-                        ignoreAnds  = TRUE)
+            # SIFToBoolNet(sifFile     = "{sif_fname}",
+            #             boolnetFile = "{boolnet_fname}",
+            #             CNOlist     = cnolist,
+            #             model       = optModel,
+            #             fixInputs   = FALSE,
+            #             preprocess  = TRUE,
+            #             ignoreAnds  = TRUE)
+            
+            result <- writeBnetFromModel(optModel, "{boolnet_fname}")
+
+            verifyBoolNetConversion(optModel, "{boolnet_fname}")
         ''')
         r(f'''
             namesFiles<-list(
@@ -277,7 +263,6 @@ class CellNOptAnalyzer:
         Evaluate the model using the CellNOptR package
         """
         print("Evaluating model...")
-        from tools.comparison import AttractorAnalysis
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(output_dir, fname)
         print(f"Comparing original model {self.GD_MODEL} with optimized model {opt_fname}")
@@ -286,13 +271,12 @@ class CellNOptAnalyzer:
         results = AA.comparison()
         
         if 'ilp' in output_dir:
-            results['total_time'] = r('opt_results$cpu_time')
             results['method']     = "ILP"
         else:
-            results['total_time'] = r('opt_results$total_time')
             results['method']     = "GA"
-        
-        results['change_percent']     = self.ChangePct
+        # print("Total time taken for evaluation:", r('t[["elapsed"]]'))
+        results['total_time']         = limit_float(r('t[["elapsed"]]'))
+        results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
 
         return results  

@@ -211,7 +211,8 @@ perturbModel <- function(model, cnolist, change_percent=0.1, DELETE=FALSE) {
 runPerturbPipeline <- function(dataset     = "toy",
                                change_pct   = 0.9,
                                seed         = 42,
-                               DELETE       = FALSE) {
+                               DELETE       = FALSE,
+                               K_FOLD       = 10) {
   # 1) Prepare output dirs 
   set.seed(seed)
   dataset_map <- list(
@@ -253,13 +254,18 @@ runPerturbPipeline <- function(dataset     = "toy",
   
   if (!file.exists(GD_BNET)) {
     message("Converting SIF to BoolNet format...")
-    SIFToBoolNet(sifFile     = GD_SIF,
-                 boolnetFile = GD_BNET,
-                 CNOlist     = cnolist,
-                 model       = orig_model,
-                 fixInputs   = FALSE,
-                 preprocess  = TRUE,
-                 ignoreAnds  = TRUE)
+    # SIFToBoolNet(sifFile     = GD_SIF,
+    #              boolnetFile = GD_BNET,
+    #              CNOlist     = cnolist,
+    #              model       = orig_model,
+    #              fixInputs   = FALSE,
+    #              preprocess  = TRUE,
+    #              ignoreAnds  = TRUE)
+    # Convert the model
+    result <- writeBnetFromModel(orig_model, GD_BNET)
+
+    # Verify the conversion
+    verifyBoolNetConversion(orig_model, GD_BNET)
   }
 
   cat(">> DEBUG: number of nodes available = ", length(orig_model$namesSpecies), "\n")
@@ -284,13 +290,19 @@ runPerturbPipeline <- function(dataset     = "toy",
   message("Wrote:\n - RData → ", rdata_fname, "\n - SIF   → ", sif_fname, "\n")
   
   # 4) Convert to BoolNet format
-  SIFToBoolNet(sifFile     = sif_fname,
-               boolnetFile = boolnet_fname,
-               CNOlist     = cnolist,
-               model       = orig_model,
-               fixInputs   = FALSE,
-               preprocess  = TRUE,
-               ignoreAnds  = TRUE)
+  # SIFToBoolNet(sifFile     = sif_fname,
+              #  boolnetFile = boolnet_fname,
+              #  CNOlist     = cnolist,
+              #  model       = mod_model,
+              #  fixInputs   = FALSE,
+              #  preprocess  = TRUE,
+              #  ignoreAnds  = TRUE)
+
+  # Convert the model
+  result <- writeBnetFromModel(mod_model, boolnet_fname)
+
+  # Verify the conversion
+  verifyBoolNetConversion(mod_model, boolnet_fname)
   message("BoolNet file written to: ", boolnet_fname)
   
   # Return paths & perturbed model
@@ -314,7 +326,9 @@ option_list <- list(
   make_option(c("-D", "--delete"), type="logical", default=FALSE,
               help="Enable deletion perturbation [default %default]", metavar="LOGICAL"),
   make_option(c("-s", "--seed"), type="integer", default=44,
-              help="Random seed [optional]", metavar="INT")
+              help="Random seed [optional]", metavar="INT"),
+  make_option(c("-k", "--k_fold"), type="integer", default=10,
+              help="Number of folds for cross-validation [default %default]", metavar="INT")
 )
 
 parser <- OptionParser(option_list=option_list,

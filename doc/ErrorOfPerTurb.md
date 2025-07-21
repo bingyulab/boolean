@@ -5,13 +5,17 @@ Following is the code to run the process:
 
 ```r
 file="./data/ToyModel/10_Modified/ToyModel.RData"
+# file = "data/DREAMmodel/DreamModel.RData"
+# data(CNOlistDREAM,package="CellNOptR")
+# data(DreamModel,package="CellNOptR")
+# file = "data/ToyModel/ToyModel.RData"
 load(file)
 pknmodel <- mod_model
 library("MEIGOR") # will load CellNOptR
 data("CellNOptR_example", package="MEIGOR") # same ToyModel as in CellNOptR
 cnolist <- CNOlist(cnolist_cellnopt)
 model <- preprocessing(data = cnolist, model = pknmodel)
-res <- gaBinaryT1(CNOlist = cnolist,model =  model, verbose=FALSE)
+t <- system.time(res <- gaBinaryT1(CNOlist = cnolist,model =  model, verbose=FALSE))
 optModel <- cutModel(model, res$bString);
 # A small bug of cutModel function, it did not reconvert the notMat matrix.
 

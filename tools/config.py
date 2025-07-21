@@ -196,6 +196,8 @@ class AdaptiveParameterManager:
         - Configure solution diversity parameters
         """
         num_solutions = 10
+        based_time_limit = 3600  # Base time limit in seconds
+        based_pop_size = 500
         config = {
             # Model size control - most important parameter
             'accountForModelSize': "TRUE",  # include size in objective
@@ -206,13 +208,13 @@ class AdaptiveParameterManager:
             'relGap': min(0.1, 0.05 * self.tolerance_multiplier),  # relative gap tolerance, Increase tolerance for higher perturbation
             
             # Computational parameters
-            'timelimit': max(3600, int(3600 * self.exploration_multiplier)),
+            'timelimit': max(based_time_limit, int(based_time_limit * self.exploration_multiplier)),
             'cplexPath': os.path.expanduser("~/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex"),
             'method': 'quadratic',  # Standard method
             
             # Solution diversity parameters
             'numSolutions': max(num_solutions, int(num_solutions * self.exploration_multiplier)), # how many solutions to retrieve
-            'limitPop': max(500, int(500 * self.population_multiplier)), # max solutions in the pool
+            'limitPop': max(based_pop_size, int(based_pop_size * self.population_multiplier)), # max solutions in the pool
             'poolIntensity': 0,  # pool management intensity
             'poolReplace': 2,  # pool replacement strategy
         }
