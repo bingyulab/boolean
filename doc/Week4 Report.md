@@ -316,46 +316,38 @@ The optimization methods have no way to "invent" new mechanistic relationships t
            unconnected_tgt = [relation$tgt for relation in relations if relation$src == rel$src]
            unconnected_src = [relation$src for relation in relations if relation$tgt == rel$tgt]
            if rel$src in stimuli:
-              pool = nodes - stimuli - unconnected_tgt
-              tgt = random.choice(pool)
+              modification_choice = 'change_target'
            elif rel$src in inhabitors:
               # For inhibitors, we can either change target or remove the relation
               modification_choice = random.choice(['change_target', 'flip_sign'])
-              if modification_choice == 'change_target':
-                     possible_targets = [node for node in nodes if node != rel.src]
-                     rel.tgt = random.choice(possible_targets)
-              else:
-                     # Flip the sign of inhibition (if your relations have signs)
-                     rel.sign = toggle_relation_sign(rel)
            elif rel$src in readout:
-              # Readouts can be either source or target - change target
-              possible_targets = [node for node in nodes if node != rel.src]
-              rel.tgt = random.choice(possible_targets)
+              # Readouts can be either source or target              
+              modification_type = random.choice(['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction'])
            else:       
               # For general nodes, we have several modification options
               modification_type = random.choice(['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction'])
 
-              if modification_type == 'change_target':
-                     # Keep same source, change target
-                     possible_targets = nodes - stimuli - unconnected_tgt
-                     rel.tgt = random.choice(possible_targets)
-                     
-              elif modification_type == 'change_source':
-                     # Keep same target, change source
-                     possible_sources = nodes - stimuli - unconnected_src
-                     rel.src = random.choice(possible_sources)
-                     
-              elif modification_type == 'flip_direction':
-                     # Swap source and target
-                     rel.src, rel.tgt = rel.tgt, rel.src
-                     
-              elif modification_type == 'flip_sign':
-                     # Change activation to inhibition or vice versa
-                     
-                     rel$src, rel$tgt = !(rel$src, rel$tgt)
-              elif modification_type == 'flip_sign_and_direction':
-                     # Change activation to inhibition and swap source and target
-                     rel$src, rel$tgt = !(rel$src, rel$tgt)               
+       if modification_type == 'change_target':
+              # Keep same source, change target
+              possible_targets = nodes - stimuli - unconnected_tgt
+              rel.tgt = random.choice(possible_targets)
+              
+       elif modification_type == 'change_source':
+              # Keep same target, change source
+              possible_sources = nodes - stimuli - unconnected_src
+              rel.src = random.choice(possible_sources)
+              
+       elif modification_type == 'flip_direction':
+              # Swap source and target
+              rel.src, rel.tgt = rel.tgt, rel.src
+              
+       elif modification_type == 'flip_sign':
+              # Change activation to inhibition or vice versa
+              
+              rel$src, rel$tgt = !(rel$src, rel$tgt)
+       elif modification_type == 'flip_sign_and_direction':
+              # Change activation to inhibition and swap source and target
+              rel$src, rel$tgt = !(rel$src, rel$tgt)               
        ```
     
 3. Parameter tuning for the optimization algorithms. The parameters are not well tuned yet, which may lead to suboptimal results. Next step is using `GridSearchCV`/`RandomSearch` to find the best parameters. The question is which metrics to use for evaluation. 
