@@ -1,12 +1,50 @@
 # Boolean Network Reconstruction Robustness Study - Progress Report
 The goal of this project is to investigate whether structure-based optimization (using experimental data) leads to functionally equivalent networks (in terms of dynamical behavior).
 
-Those methods are compared via MSE, the distance between M the model output for time t, readout l, condition k and the corresponding measurement D.
+Those methods (Caspo, MEIGO and CellNOpt) are compared via MSE, the distance between M the model output for time t, readout l, condition k and the corresponding measurement D.
 
-## Small changes
+The goal of those method is to answer following question: Given this proposed network structure, which parts of it are actually active under these experimental conditions?
 
-1. using mannually saving function rather than using `CANTATA` one to save the results.
-2. Workflow works fine for toy example. Right now test for `DREAMmodel`.
+Real biological networks are context-dependent -- the same cell might have hundreds of potential regulatory connections, but only a subset are active under specific conditions like drug treatment, disease states, or developmental stages.
+
+We care more about following question:
+1. Robustness Testing: How sensitive are these optimization methods to errors in the input network? 
+2. Method Reliability: Do different algorithms converge to similar solutions when starting from slightly different network topologies?
+3. Biological Relevance: Do the optimized networks capture known biological interactions and pathways?
+
+We try to reveal which method is most "forgiving" of PKN errors, which is most conservative, and which produces the most reproducible results across different starting conditions.
+
+We're essentially asking three fundamental questions about each method. 
+**First**, when we give the algorithm imperfect information, how much does its final answer change? 
+**Second**, when we run the same algorithm multiple times, do we get consistent results? 
+**Third**, when the algorithm encounters conflicting or uncertain information, does it make reasonable choices?
+
+### Metrics
+**Stability Metrics**: Jaccard similarity and hamming distance between network.
+
+**Measuring Algorithmic Robustness**: final objective function
+- Methods that are more robust to network errors should show smaller changes in their final scores when you introduce minor modifications to the input network.
+
+If we completely scramble a jigsaw puzzle, every method will fail. But that doesn't help us choose which method to use when we have a mostly correct puzzle with just a few pieces in the wrong places.
+
+- **Small modifications**, perhaps changing only 5-10% of relationships, test sensitivity to the kinds of errors that commonly occur in real biological databases, like an activation relationship was mistakenly recorded as inhibition. 
+- **Medium-scale modifications**, around 20-30% changes, test how methods handle more substantial uncertainties in prior knowledge. This might represent situations where you're working with a relatively new biological system where much of the regulatory network is still being discovered, or where you're applying a network from one cell type to a different but related cell type.
+- **Large-scale modifications**, like 90%, test whether methods can extract signal from essentially random prior knowledge.
+
+**Maybe** rather than focusing solely on the percentage of changes, consider the different modification types.
+
+- **Random edge swapping**: randomly swap the direction of edges in the network.
+- **Removing recently discovered interactions**: test how methods handle the absence of new information.
+- **Adding plausible but unconfirmed interactions**: introduce new edges that are biologically plausible but not yet confirmed.
+- **Reversing the signs of interactions**: change activating interactions to inhibitory and vice versa, simulating common errors in data curation.
+
+If ultimate goal is to understand which regulatory relationships are active under specific experimental conditions, then comparing the network structures directly makes perfect sense.
+
+If the goal is to predict cellular behavior, understand drug responses, or design interventions, then comparing the attractors—the stable states that cells reach over time—becomes much more relevant. Two different network structures might produce very similar cellular behaviors, or conversely, a small change in network structure might dramatically alter cellular dynamics.
+
+Network-level comparisons tell about the consistency of biological interpretation--how similarly different methods identify active regulatory relationships. Attractor-level comparisons tell about the consistency of biological prediction--how similarly different methods predict cellular behavior.
+
+Simple correlation might miss important differences in attractor structure or stability. Consider measuring both the steady-state values of key regulatory nodes and the basin sizes of different attractors. Methods that produce more robust attractors—ones that are reached from a wider variety of initial conditions—might be more reliable for biological prediction even if their network structures look less similar to the original.
 
 ## Explanation
 Following is the prior knowledge model of the `ToyModel`:
@@ -250,18 +288,29 @@ These optimization algorithms - CellNOptR, CASPO, MEIGO - were designed with a s
 
 The optimization methods have no way to "invent" new mechanistic relationships that aren't already present in the prior knowledge network. They can only select from what you've given them. When you modify the network structure, you're potentially removing the very pathways that would allow the methods to explain your experimental observations.
 
+## Progress
+1. Implemented the workflow for the toy model. Using mannually saving function rather than using `CANTATA` one to save the results. 
+2. Go through the code and some parts of code need to be changed:
+       - How we modify the network structure.
+       - How we compare the methods and attractors.
+       - How to cross-validate the results. i.e. how to split the data into training and testing sets.
+       - How to save the results. Mannually save the results or using `CANTATA` one?
+
+
 ## Challenges
 1. Comparison of attractors with different node sets. Did not handle the case when the reconstructed model has larger node sets (i.e. 200, 1000) than the original model. 
     - The current implementation assumes the node sets are the same between original and reconstructed models or original larger than reconstructed.
     - The comparison methods need to be adjusted to handle cases where the reconstructed model has fewer nodes than the original.
     - Hungarian Algorithm can be used to find the best matching between nodes in the two models, but it still is slower for the case 1000.
 
-2. Parameter tuning for the optimization algorithms. The parameters are not well tuned yet, which may lead to suboptimal results. Next step is using `GridSearchCV`/`RandomSearch` to find the best parameters. The question is which metrics to use for evaluation. 
+2. Modify the network structure may destroy the original network structure. Those four methods do not handle this case well. 
+    - The modification methods need to be adjusted to ensure that the original network structure is preserved.
+    
+3. Parameter tuning for the optimization algorithms. The parameters are not well tuned yet, which may lead to suboptimal results. Next step is using `GridSearchCV`/`RandomSearch` to find the best parameters. The question is which metrics to use for evaluation. 
     - As the text in first paragraph, there is a gap between the MSE and the difference between the attractors. They measure different things.
     - The question is does smaller difference between the attractors means better optimization? Suppose the comparison between different size of attractors is well defined. Those methods focus on the MSE, which is not directly related to the attractor comparison.
 
 ## Next Steps
 
-The workflow is now working for the toy model, and the next step is to apply it to the DREAM model. The DREAM model is more complex and brings some challenges stated above. 
+1. Implement the cross-validation for the model.  Generate 10 modified networks and run the optimization methods on each of them.
 
-I think one thing to do is go through the code to make sure that the implementation is correct and the results are as expected.
