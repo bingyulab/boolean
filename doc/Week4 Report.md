@@ -3,14 +3,14 @@ The goal of this project is to investigate whether structure-based optimization 
 
 Those methods (Caspo, MEIGO and CellNOpt) are compared via MSE, the distance between M the model output for time t, readout l, condition k and the corresponding measurement D.
 
-The goal of those method is to answer following question: Given this proposed network structure, which parts of it are actually active under these experimental conditions?
+The goal of those method is to answer following question: Given this proposed network structure, which parts of it are actually relavant under these experimental conditions?
 
 Real biological networks are context-dependent -- the same cell might have hundreds of potential regulatory connections, but only a subset are active under specific conditions like drug treatment, disease states, or developmental stages.
 
 We care more about following question:
-1. Robustness Testing: How sensitive are these optimization methods to errors in the input network? 
-2. Method Reliability: Do different algorithms converge to similar solutions when starting from slightly different network topologies?
-3. Biological Relevance: Do the optimized networks capture known biological interactions and pathways?
+1. **Robustness Testing**: How sensitive are these optimization methods to errors in the input network? 
+2. **Method Reliability**: Do different algorithms converge to similar solutions when starting from slightly different network topologies?
+3. **Biological Relevance**: Do the optimized networks capture known biological interactions and pathways?
 
 We try to reveal which method is most "forgiving" of PKN errors, which is most conservative, and which produces the most reproducible results across different starting conditions.
 
@@ -305,6 +305,58 @@ The optimization methods have no way to "invent" new mechanistic relationships t
 
 2. Modify the network structure may destroy the original network structure. Those four methods do not handle this case well. 
     - The modification methods need to be adjusted to ensure that the original network structure is preserved.
+    - *Stimuli* represent the external signals or treatments you apply to cells to trigger biological responses. -- they don't get regulated by other molecules in experimental system, but rather initiate the cellular responses you want to study.
+    - *Inhibitors* are pharmaceutical compounds or experimental treatments that block specific proteins or pathways. Inhibitors can serve as both regular network components and as targets for inhibitory drugs. The crucial insight here is that when we apply an inhibitor, we're not creating a negative regulatory relationship in the network structure itself. Instead, we're experimentally blocking that protein's normal function. The network topology remains the same, but the experimental conditions change how the network behaves.
+    - *Readouts* are the molecular measurements you take to assess cellular responses. These represent the endpoints of your experiment - the proteins whose activity or abundance you measure to determine whether your treatments had the expected effects. Some molecules can serve multiple roles: "p38" appears in both your inhibitors list and your readouts list, meaning it's both a target for experimental manipulation and a measured endpoint.
+       ```r
+       change_PCT, stimuli, inhabitors, readout, nodes, relations
+       #rel_modified = change_PCT * # relations,
+       modified_rel = sample(1:length(relations), size = rel_modified, replace = False)
+       for rel in modified_rel:
+           unconnected_tgt = [relation$tgt for relation in relations if relation$src == rel$src]
+           unconnected_src = [relation$src for relation in relations if relation$tgt == rel$tgt]
+           if rel$src in stimuli:
+              pool = nodes - stimuli - unconnected_tgt
+              tgt = random.choice(pool)
+           elif rel$src in inhabitors:
+              # For inhibitors, we can either change target or remove the relation
+              modification_choice = random.choice(['change_target', 'flip_sign'])
+              if modification_choice == 'change_target':
+                     possible_targets = [node for node in nodes if node != rel.src]
+                     rel.tgt = random.choice(possible_targets)
+              else:
+                     # Flip the sign of inhibition (if your relations have signs)
+                     rel.sign = toggle_relation_sign(rel)
+           elif rel$src in readout:
+              # Readouts can be either source or target - change target
+              possible_targets = [node for node in nodes if node != rel.src]
+              rel.tgt = random.choice(possible_targets)
+           else:       
+              # For general nodes, we have several modification options
+              modification_type = random.choice(['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction'])
+
+              if modification_type == 'change_target':
+                     # Keep same source, change target
+                     possible_targets = nodes - stimuli - unconnected_tgt
+                     rel.tgt = random.choice(possible_targets)
+                     
+              elif modification_type == 'change_source':
+                     # Keep same target, change source
+                     possible_sources = nodes - stimuli - unconnected_src
+                     rel.src = random.choice(possible_sources)
+                     
+              elif modification_type == 'flip_direction':
+                     # Swap source and target
+                     rel.src, rel.tgt = rel.tgt, rel.src
+                     
+              elif modification_type == 'flip_sign':
+                     # Change activation to inhibition or vice versa
+                     
+                     rel$src, rel$tgt = !(rel$src, rel$tgt)
+              elif modification_type == 'flip_sign_and_direction':
+                     # Change activation to inhibition and swap source and target
+                     rel$src, rel$tgt = !(rel$src, rel$tgt)               
+       ```
     
 3. Parameter tuning for the optimization algorithms. The parameters are not well tuned yet, which may lead to suboptimal results. Next step is using `GridSearchCV`/`RandomSearch` to find the best parameters. The question is which metrics to use for evaluation. 
     - As the text in first paragraph, there is a gap between the MSE and the difference between the attractors. They measure different things.
