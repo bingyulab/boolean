@@ -44,3 +44,37 @@ summarizeDreamData <- function(model, CNOl) {
 • Signals read out          : 7 
 • Time‐points per experiment: 2 
 • Total experiments (rows)  : 25
+
+
+> CNOlistDREAM$namesCues
+[1] "igf1"  "il1a"  "tgfa"  "tnfa"  "ikk"   "mek12" "pi3k"  "p38"  
+> CNOlistDREAM$namesInhibitors
+[1] "ikk"   "mek12" "pi3k"  "p38"  
+> CNOlistDREAM$namesStimuli
+[1] "igf1" "il1a" "tgfa" "tnfa"
+> CNOlistDREAM$namesSignals
+[1] "akt"   "erk12" "ikb"   "jnk12" "p38"   "hsp27" "mek12"
+> DreamModel
+$reacID
+ [1] "prak=hsp27"    "map3k7=mkk7"   "map3k7=nik"    "map3k7=mkk3"  
+ [5] "map3k7=mkk6"   "map3k7=mkk4"   "pip3=pdk1"     "pak=raf1"     
+ [9] "rac=map3k1"    "rac=pak"       "raf1=mek12"    "mek12=erk12"  
+[13] "irs1=pi3k"     "nik=ikk"       "map3k1=mkk7"   "map3k1=ikk"   
+[17] "map3k1=mkk4"   "grb2=sos"      "mkk4=p38"      "mkk4=jnk12"   
+[21] "igf1=igfr"     "mkk7=jnk12"    "igfr=irs1"     "igfr=shc"     
+[25] "sos=ras"       "ikk=ikb"       "!akt=raf1"     "akt=cot"      
+[29] "!akt=pak"      "traf6=sitpec"  "traf6=map3k7"  "il1r=traf6"   
+[33] "p38=prak"      "shc=grb2"      "mkk6=p38"      "tgfa=egfr"    
+[37] "traf2=ask1"    "traf2=map3k7"  "sitpec=map3k1" "pi3k=rac"     
+[41] "pi3k=pip3"     "ras=pi3k"      "ras=raf1"      "ras=map3k1"   
+[45] "egfr=shc"      "egfr=grb2"     "egfr=pi3k"     "tnfr=traf2"   
+[49] "tnfr=pi3k"     "il1a=il1r"     "cot=ikk"       "mkk3=p38"     
+[53] "mkk3=prak"     "erk12=prak"    "pdk1=akt"      "tnfa=tnfr"    
+[57] "ask1=mkk4"     "ask1=mkk7"    
+
+$namesSpecies
+ [1] "prak"   "map3k7" "pip3"   "pak"    "rac"    "raf1"   "mek12"  "irs1"  
+ [9] "nik"    "map3k1" "grb2"   "mkk4"   "igf1"   "mkk7"   "igfr"   "sos"   
+[17] "ikk"    "akt"    "traf6"  "il1r"   "p38"    "shc"    "mkk6"   "tgfa"  
+[25] "traf2"  "sitpec" "pi3k"   "ras"    "egfr"   "tnfr"   "il1a"   "cot"   
+[33] "mkk3"   "erk12"  "pdk1"   "tnfa"   "ask1"   "hsp27"  "jnk12"  "ikb" 

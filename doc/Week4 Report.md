@@ -308,46 +308,166 @@ The optimization methods have no way to "invent" new mechanistic relationships t
     - *Stimuli* represent the external signals or treatments you apply to cells to trigger biological responses. -- they don't get regulated by other molecules in experimental system, but rather initiate the cellular responses you want to study.
     - *Inhibitors* are pharmaceutical compounds or experimental treatments that block specific proteins or pathways. Inhibitors can serve as both regular network components and as targets for inhibitory drugs. The crucial insight here is that when we apply an inhibitor, we're not creating a negative regulatory relationship in the network structure itself. Instead, we're experimentally blocking that protein's normal function. The network topology remains the same, but the experimental conditions change how the network behaves.
     - *Readouts* are the molecular measurements you take to assess cellular responses. These represent the endpoints of your experiment - the proteins whose activity or abundance you measure to determine whether your treatments had the expected effects. Some molecules can serve multiple roles: "p38" appears in both your inhibitors list and your readouts list, meaning it's both a target for experimental manipulation and a measured endpoint.
+    - Following is the new logic to modify the network structure:
        ```r
        change_PCT, stimuli, inhabitors, readout, nodes, relations
        #rel_modified = change_PCT * # relations,
        modified_rel = sample(1:length(relations), size = rel_modified, replace = False)
+       candidate = ['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction', 'rewire_pathway', 'split_relationship', 'merge_relationships',
+       ]
+       leaf_nodes = [node for node in nodes if not any(relation.src == node for relation in relations)]
        for rel in modified_rel:
-           unconnected_tgt = [relation$tgt for relation in relations if relation$src == rel$src]
-           unconnected_src = [relation$src for relation in relations if relation$tgt == rel$tgt]
-           if rel$src in stimuli:
-              modification_choice = 'change_target'
-           elif rel$src in inhabitors:
+           unconnected_tgt = [relation.tgt for relation in relations if relation.src == rel.src]
+           unconnected_src = [relation.src for relation in relations if relation.tgt == rel.tgt]
+           if rel.src in stimuli:
+              modification_type = 'change_target'
+              modify(rel, modification_type)
+           elif rel.src in inhabitors:
               # For inhibitors, we can either change target or remove the relation
-              modification_choice = random.choice(['change_target', 'flip_sign'])
-           elif rel$src in readout:
-              # Readouts can be either source or target              
-              modification_type = random.choice(['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction'])
-           else:       
-              # For general nodes, we have several modification options
-              modification_type = random.choice(['change_target', 'change_source', 'flip_direction', 'flip_sign', 'flip_sign_and_direction'])
+              modification_type = random.choice(['change_target', 'flip_sign'])
+              modify(rel, modification_type)
+           elif rel.src in readout:
+              # Readouts can be either source or target
+              if rel.tgt in leaf_nodes:
+                 candidate -= ['change_source']
+              modification_type = random.choice(candidate)
+              modify(rel, modification_type)
+           else:
+              if rel.tgt in leaf_nodes:
+                 candidate -= ['change_source']
+              modification_type = random.choice(candidate)
+              modify(rel, modification_type)
 
-       if modification_type == 'change_target':
-              # Keep same source, change target
-              possible_targets = nodes - stimuli - unconnected_tgt
-              rel.tgt = random.choice(possible_targets)
+       add_reaction <- function(mod, new_id, src, tgt, is_not=FALSE) {
+              # skip if already present
+              if (new_id %in% mod$reacID) return(mod)
+              # add to reacID
+              mod$reacID <- c(mod$reacID, new_id)
+              # extend interMat and notMat
+              nsp <- length(mod$namesSpecies)
+              # add zero column
+              mod$interMat <- cbind(mod$interMat, rep(0, nsp))
+              mod$notMat   <- cbind(mod$notMat,   rep(0, nsp))
+              col_idx <- ncol(mod$interMat)
+              # source → -1, target → +1
+              mod$interMat[src, col_idx] <- -1
+              mod$interMat[tgt, col_idx] <- +1
+              # mark NOT if needed
+              if (is_not) mod$notMat[src, col_idx] <- 1
+
+              # **re‑assign column names**
+              colnames(mod$interMat) <- mod$reacID
+              colnames(mod$notMat)   <- mod$reacID
+              return(mod)
+              }
               
-       elif modification_type == 'change_source':
-              # Keep same target, change source
-              possible_sources = nodes - stimuli - unconnected_src
-              rel.src = random.choice(possible_sources)
+       # Helper to remove a reaction column by index
+       remove_reaction <- function(mod, col_idx) {
+              mod$reacID   <- mod$reacID[-col_idx]
+              mod$interMat <- mod$interMat[ , -col_idx]
+              mod$notMat   <- mod$notMat[ , -col_idx]
+
+              # **re‑assign column names**
+              colnames(mod$interMat) <- mod$reacID
+              colnames(mod$notMat)   <- mod$reacID
+              return(mod)
+              }
               
-       elif modification_type == 'flip_direction':
-              # Swap source and target
-              rel.src, rel.tgt = rel.tgt, rel.src
-              
-       elif modification_type == 'flip_sign':
-              # Change activation to inhibition or vice versa
-              
-              rel$src, rel$tgt = !(rel$src, rel$tgt)
-       elif modification_type == 'flip_sign_and_direction':
-              # Change activation to inhibition and swap source and target
-              rel$src, rel$tgt = !(rel$src, rel$tgt)               
+       # Parse a reaction string "(!)node1=node2" into components
+       parse_reac <- function(rid) {
+              neg <- startsWith(rid, "!")
+              rid2 <- sub("^!", "", rid)
+              parts <- strsplit(rid2, "=", fixed=TRUE)[[1]]
+              list(src=parts[1], tgt=parts[2], is_not=neg)
+              }
+
+       def change_node(relation, node_type):
+              if node_type == 'target':
+                     # Keep same source, change target
+                     # testing uncertainty about whether interactions are activating or inhibiting
+                     remove_reaction(model, rel_index)
+                     possible_targets = nodes - stimuli - unconnected_tgt
+                     rel.tgt = random.choice(possible_targets)     
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+              elif node_type == 'source':
+                     # Keep same target, change source
+                     # testing uncertainty about whether interactions are activating or inhibiting
+                     remove_reaction(model, rel_index)
+                     possible_sources = nodes - stimuli - unconnected_src
+                     rel.src = random.choice(possible_sources)    
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+       def flip(relation, FLIP_SIGN=TRUE, FLIP_DIRECTION=TRUE):
+              if FLIP_SIGN:
+                     # Change activation to inhibition or vice versa
+                     # testing uncertainty about whether interactions are activating or inhibiting
+                     remove_reaction(model, rel_index)
+                     rel.src, rel.tgt = !(rel.src, rel.tgt)
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=True)  
+              if FLIP_DIRECTION:
+                     # Swap source and target
+                     # testing uncertainty about causality and feedback relationships
+                     remove_reaction(model, rel_index)
+                     rel.src, rel.tgt = rel.tgt, rel.src
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+       def rewire_pathway(relation, leaf_nodes):
+              # A→B→C and change it to A→C→B
+              # testing how sensitive methods are to the specific order of regulatory events.
+              rel2 = find_pathway(rel)
+              remove_reaction(model, rel_index)
+              rel.src, rel.tgt = rel.src, rel2.src
+              rel2.src, rel2.tgt = rel.src, rel.tgt
+              add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+              add_reaction(model, new_id, rel2.src, rel2.tgt, is_not=rel.is_not)  
+       def split_relationship(relation, leaf_nodes):
+              if rel.tgt in leaf_nodes:
+                     node1 = find_neightbor(rel.tgt, 'target', hop=1)
+                     remove_reaction(model, rel_index)
+                     rel1.src, rel1.tgt = rel.src, node1
+                     rel.src = node1
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+                     add_reaction(model, new_id, rel1.src, rel1.tgt, is_not=rel.is_not)  
+              else:
+                     node1 = find_neightbor(rel.src, 'source', hop=1)
+                     remove_reaction(model, rel_index)
+                     rel1.src, rel1.tgt = node1, rel.tgt
+                     rel.tgt = node1
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+                     add_reaction(model, new_id, rel1.src, rel1.tgt, is_not=rel.is_not)  
+       def merge_relationships(relation, leaf_nodes):
+              # A→B→C and merge it into A→C
+              # testing how methods handle merging multiple regulatory relationships into a single one.
+              if rel.tgt in leaf_nodes:
+                     rel1 = find_neightbor(rel.tgt, 'target', hop=2)
+                     remove_reaction(model, rel_index)
+                     remove_reaction(model, rel1_index)
+                     rel.src, rel.tgt = rel1.src, rel.tgt
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+              else:
+                     rel1 = find_neightbor(rel.src, 'source', hop=2)
+                     remove_reaction(model, rel_index)
+                     remove_reaction(model, rel1_index)
+                     rel.src, rel.tgt = rel.src, rel1.tgt
+                     add_reaction(model, new_id, rel.src, rel.tgt, is_not=rel.is_not)  
+       def modify(relation, modification_type):           
+              if modification_type == 'change_target':
+                   change_node(relation, 'target')              
+              elif modification_type == 'change_source':
+                   change_node(relation, 'source')
+              elif modification_type == 'flip_direction':
+                     flip(relation, FLIP_SIGN=False, FLIP_DIRECTION=True)           
+              elif modification_type == 'flip_sign':
+                     flip(relation, FLIP_SIGN=True, FLIP_DIRECTION=False)
+              elif modification_type == 'flip_sign_and_direction':
+                     # Change activation to inhibition and swap source and target
+                     flip(relation, FLIP_SIGN=True, FLIP_DIRECTION=True)
+              elif modification_type == 'rewire_pathway':
+                     rewire_pathway(relation, leaf_nodes)
+              elif modification_type == 'split_relationship':
+                     # direct relationship A→C and replace it with an indirect one A→B→C 
+                     split_relationship(relation, leaf_nodes)
+              elif modification_type == 'merge_relationships':
+                     # A→B→C and merge it into A→C
+                     merge_relationships(relation, leaf_nodes)
        ```
     
 3. Parameter tuning for the optimization algorithms. The parameters are not well tuned yet, which may lead to suboptimal results. Next step is using `GridSearchCV`/`RandomSearch` to find the best parameters. The question is which metrics to use for evaluation. 

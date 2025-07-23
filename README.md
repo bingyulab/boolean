@@ -20,6 +20,7 @@ Since the architectures of the clusters are different, and the partitions in eac
 
 ```bash
 module load lang/SciPy-bundle/2023.11-gfbf-2023b
+# python -m pip install --user virtualenv # For local installation
 virtualenv --system-site-packages ${HOME}/.virtualenvs/boolean
 ```
 The --system-site-packages option inherits all packages already installed in your system site-packages directory. To use the environment, just load the module and the environment:
