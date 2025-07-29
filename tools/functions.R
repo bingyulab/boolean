@@ -469,3 +469,183 @@ processOptimizedModel <- function(optModel) {
   
   return(optModel)
 }
+
+
+pkn2sif<-function(model,optimRes=NA,writeSif=FALSE, filename="Model"){
+	
+  if (is.na(optimRes[1])){
+    BStimes<-rep(1,length(model$reacID))
+  }else{
+    BStimes<-optimRes$bString
+  }	
+
+	findOutput<-function(x){
+		sp<-which(x == 1)
+		sp<-model$namesSpecies[sp]
+		}
+		
+	reacOutput<-apply(model$interMat,2,findOutput)
+	
+	findInput<-function(x){
+		sp<-which(x == -1)
+		sp<-model$namesSpecies[sp]
+		}
+		
+	reacInput<-apply(model$interMat,2,findInput)
+		
+#if the class of reacInput is not a list, then there are no AND gates
+	if(!is(reacInput,"list")){
+	
+		isNeg<-function(x){
+			isNegI<-any(x == 1)
+			return(isNegI)
+			}
+			
+		inpSign<-apply(model$notMat,2,isNeg)
+		inpSign<-!inpSign
+		inpSign[inpSign]<-1
+		inpSign[!inpSign]<--1
+    
+		sifFile<-cbind(reacInput,inpSign,reacOutput)
+    # preserve matrix structure even if only one row matches
+    sifFile <- sifFile[BStimes == 1, , drop = FALSE]
+		colnames(sifFile)=NULL
+    rownames(sifFile)=NULL
+    
+		}else{
+		
+#in this case there are AND gates and so we need to create dummy "and#" nodes
+			sifFile<-matrix(ncol=3)
+			nANDs<-1
+			for(i in 1:length(reacOutput)){
+			  if (BStimes[i]==1){
+
+				  if(length(reacInput[[i]]) == 1){
+            tmp<-matrix(0,nrow=1,ncol=3)
+					  tmp[1,1]<-reacInput[[i]]
+					  tmp[1,3]<-reacOutput[i]
+					  tmp[1,2]<-ifelse(
+						  any(model$notMat[,i] == 1),-1,1)
+              sifFile<-rbind(sifFile,tmp)
+          
+					}else{
+					
+						for(inp in 1:length(reacInput[[i]])){
+              tmp<-matrix(0,nrow=1,ncol=3)
+							tmp[1,1]<-reacInput[[i]][inp]
+							tmp[1,3]<-paste("and",nANDs,sep="")
+							tmp[1,2]<-ifelse(
+								model$notMat[which(reacInput[[i]][inp]==rownames(model$notMat)),i] == 1,
+								-1,1)
+              sifFile<-rbind(sifFile,tmp)
+							}
+						tmp<-matrix(0,nrow=1,ncol=3)	
+						tmp[1,1]<-paste("and",nANDs,sep="")
+						tmp[1,3]<-reacOutput[i]
+						tmp[1,2]<-1
+            sifFile<-rbind(sifFile,tmp)
+						
+            nANDs<-nANDs+1
+            }
+			    }
+				}
+				
+      sifFile<-sifFile[2:dim(sifFile)[1],]
+			
+			}
+
+#this is the edge attribute matrix that contains, for each edge, whether it is
+#absent from the model (0), present at t1(1) or present at t2(2)
+  if (writeSif==TRUE){
+	filename<-paste(filename, ".sif", sep="")
+    writeSIF(sifFile, filename=filename)
+  }
+
+  return(sifFile)
+}
+
+
+toSIF <- function(model, filename, overwrite=FALSE){
+
+    # convert internal model structure to a SIF matrix
+    sif = pkn2sif(model)
+
+    # and save it into a file
+    if (file.exists(filename)==FALSE){
+        write.table(sif[,1:3],file=filename,
+            row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+    }
+    else{
+       if (overwrite==TRUE){
+            write.table(sif[,1:3],file=filename,
+                row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+        }
+        else{
+           stop(paste("File ", filename, "already exists.",  sep=""))
+        }
+    }
+
+
+}
+
+
+ilpBinaryT1New <- function(cnolist, 
+                            model,
+                            md,
+                            cplexPath,
+                            sizeFac = 0.0001, 
+                            mipGap = 0, 
+                            relGap = 0, 
+                            timelimit = 3600, 
+                            method = "quadratic",
+                            numSolutions = 100, 
+                            limitPop = 500, 
+                            poolIntensity = 0, 
+                            poolReplace = 2,
+                            temp_dir = tempdir()){
+  
+  ## Initializing auxilliary objects for the analysis
+  resILPAll <- list()
+  exclusionList <- NULL
+  cnolistReal <- cnolist
+  
+  if(!file.exists(cplexPath)){
+    stop("User should provide a valid CPLEX path for using this function.")
+  }
+    
+  ## Form of the objective function
+  if(!(method%in%c("quadratic", "linear"))){
+    print("'method' variable should be quadratic or linear. 
+          Setting method = 'qadratic'")
+    method <- "quadratic"
+  }
+  
+  ## Penalty factors as decimals
+  options(scipen = 10)
+
+  startILP <- Sys.time()
+  print("Creating LP file and running ILP...")
+  print(paste("Cplex path:", cplexPath))
+  print(paste("Method:", method))
+  print(paste("Size factor:", sizeFac))
+  print(paste("MIP gap:", mipGap))
+  print(paste("Relative gap:", relGap))
+  print(paste("Time limit:", timelimit, "seconds"))
+  print(paste("Number of solutions:", numSolutions))
+  print(paste("Limit population:", limitPop))
+  print(paste("Pool intensity:", poolIntensity))
+  print(paste("Pool replace:", poolReplace))
+
+  resILP <- CellNOptR:::createAndRunILP(model, md, cnolistReal, accountForModelSize = TRUE, 
+                           sizeFac = sizeFac, mipGap=mipGap, relGap=relGap, 
+                           timelimit=timelimit, cplexPath = cplexPath, 
+                           method = method, numSolutions = numSolutions, 
+                           limitPop = limitPop, poolIntensity = poolIntensity, 
+                           poolReplace = poolReplace)
+  endILP <- Sys.time()
+  
+  CellNOptR:::cleanupILP()
+  
+  return(resILP)
+  
+}

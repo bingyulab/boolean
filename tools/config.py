@@ -84,15 +84,15 @@ class AdaptiveParameterManager:
         """
         # Base configuration
         
-        base_threads = 4
+        base_threads = 16
         base_factor = 100
         
         config = {
             "change_percent": self.change_percent,
             'threads': max(1, int(base_threads * self.exploration_multiplier)),  # Use multiple threads for efficiency
             'conf': 'many',  # Standard configuration
-            'fit': self.change_percent * 0.1 * self.tolerance_multiplier,  # tolerance over fitness (Default to 0)
-            'size': int(self.change_percent * 5 * (1.0 / self.size_factor_multiplier)),  # tolerance over size (Default to 0)
+            'fit': self.change_percent * 0.05 * self.tolerance_multiplier,  # tolerance over fitness (Default to 0)
+            'size': int(self.change_percent * 2.5 * (1.0 / self.size_factor_multiplier)),  # tolerance over size (Default to 0)
             'factor': max(50, int(base_factor * self.exploration_multiplier)),  # discretization range [0, factor]
             'discretization': 'round',  # discretization function: round, floor, ceil (Default to round)
             'length': self._calculate_caspo_length(),  # max conjunction length (0 = unbounded)
@@ -130,18 +130,18 @@ class AdaptiveParameterManager:
         - Adjust termination criteria to allow more thorough search
         - Configure local search parameters for robustness
         """
-        base_maxeval = 2000
-        base_maxtime = 30
+        base_maxeval = 5000
+        base_maxtime = 120
         
         config = {
             "change_percent": self.change_percent,
             'maxeval': int(base_maxeval * self.exploration_multiplier),  # total function evaluations
             'maxtime': int(base_maxtime * self.exploration_multiplier),
             'use_local': 1,  # Always use local search
-            'aggr': 0,  # Non-aggressive search for better exploration
-            'local_search_type': 1,  # 1 = first improvement, 2 = best
+            'aggr': 1,  # Non-aggressive search for better exploration
+            'local_search_type': 2,  # 1 = first improvement, 2 = best
             'decomp': 1,  # focus local search on perturbed vars
-            'maxdist': min(0.8, 0.5 * self.exploration_multiplier),  # furthest neighborhood (0–1)
+            'maxdist': min(1.0, self.exploration_multiplier),  # furthest neighborhood (0–1)
             'iterprint': 0,  # Reduce output for cleaner logs
         }
         

@@ -13,18 +13,20 @@ from sklearn.metrics import adjusted_rand_score
 from itertools import combinations
 import warnings
 from rpy2.robjects.vectors import FloatVector
+import logging
+# this will suppress all INFO (and DEBUG) messages from every logger
+logging.disable(logging.INFO)
 
 
-
-def limit_float(x):
+def limit_float(x, nbit=2):
     # print(f"Limiting float: {x}, type: {type(x)}")
     if isinstance(x, FloatVector):
         x = float(x[0])
     else:
         x = float(x)
     s = str(x)
-    if '.' in s and len(s.split('.')[1]) > 2:
-        return round(x, 2)
+    if '.' in s and len(s.split('.')[1]) > nbit:
+        return round(x, nbit)
     return x
 
 
@@ -143,120 +145,74 @@ class AttractorComparison:
     
     def _compute_matching(self):
         n, m = len(self.orig_vecs), len(self.recon_vecs)
-        size = max(n, m)
-        S = np.zeros((size, size), dtype=float)
+        if n == 0 or m == 0:
+            self.match_sims = []
+            return
+        
+        orig_matrix = self.orig_vecs.astype(int)  # Convert bool to int for arithmetic
+        recon_matrix = self.recon_vecs.astype(int)
+        
+        # Compute intersection and union matrices all at once
+        # This is the vectorized equivalent of your nested loop
+        intersection = np.dot(orig_matrix, recon_matrix.T)  # Matrix multiplication gives intersections
 
-        # Fill similarity matrix
-        for i in range(n):
-            for j in range(m):
-                # Jaccard distance on boolean vectors
-                S[i, j] = 1 - jaccard(self.orig_vecs[i], self.recon_vecs[j])
+        # Calculate unions: |A| + |B| - |A ∩ B|
+        orig_sums = np.sum(orig_matrix, axis=1, keepdims=True)  # Sum of each original vector
+        recon_sums = np.sum(recon_matrix, axis=1)  # Sum of each reconstructed vector
+        union = orig_sums + recon_sums - intersection
 
+        # Jaccard similarities (handle division by zero)
+        similarities = np.divide(intersection, union, 
+                        out=np.zeros_like(intersection, dtype=float), 
+                        where=union!=0)
         # Hungarian assignment
-        cost = -S
+        cost = -similarities
         row, col = linear_sum_assignment(cost)
         pairs = [(i, j) for i, j in zip(row, col) if i < n and j < m]
-        self.match_sims = [S[i, j] for i, j in pairs]
+        self.match_sims = [similarities[i, j] for i, j in pairs]
         
     def compute_global_jaccard(self):
+        # larger values indeed mean better matches
         return limit_float(np.mean(self.match_sims) if self.match_sims else 0.0)
 
-    def compute_jaccard_similarity(self):
-        """
-        Compute Jaccard similarity between attractor sets.
-        
-        Returns:
-        --------
-        float : Jaccard similarity coefficient (0-1)
-        """
-        if not self.common_nodes:
-            return 0.0
-        
-        # Convert to binary vectors for Jaccard computation
-        orig_vectors = [self._dict_to_vector(att) for att in self.original_projected]
-        recon_vectors = [self._dict_to_vector(att) for att in self.reconstructed_projected]
-        
-        # Find best matches using minimum distance
-        matches = []
-        used_recon = set()
-        
-        for orig_vec in orig_vectors:
-            best_match = None
-            best_similarity = -1
-            
-            for i, recon_vec in enumerate(recon_vectors):
-                if i in used_recon:
-                    continue
-                
-                # Jaccard similarity = 1 - Jaccard distance
-                similarity = 1 - jaccard(orig_vec, recon_vec)
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match = i
-            
-            if best_match is not None:
-                matches.append(best_similarity)
-                used_recon.add(best_match)
-            else:
-                matches.append(0.0)
-        
-        return np.mean(matches) if matches else 0.0
-    
     def compute_global_hamming(self):
         """Mean Hamming similarity over optimal one-to-one matching."""
+        # smaller values indicate better matches
         # Recompute with hamming if needed
         n, m = len(self.orig_vecs), len(self.recon_vecs)
-        if not (n and m):
-            return 0.0
-        size = max(n, m)
-        H = np.zeros((size, size), dtype=float)
-        for i in range(n):
-            for j in range(m):
-                H[i, j] = 1 - hamming(self.orig_vecs[i], self.recon_vecs[j])
-        cost = -H
-        row, col = linear_sum_assignment(cost)
-        sims = [H[i, j] for i, j in zip(row, col) if i<n and j<m]
-        return limit_float(np.mean(sims) if sims else 0.0)
-    
-    def compute_hamming_similarity(self):
-        """
-        Compute normalized Hamming similarity between attractor sets.
-        
-        Returns:
-        --------
-        float : Average Hamming similarity (0-1)
-        """
-        if not self.common_nodes:
+        if len(self.orig_vecs) == 0 or len(self.recon_vecs) == 0:
             return 0.0
         
-        orig_vectors = [self._dict_to_vector(att) for att in self.original_projected]
-        recon_vectors = [self._dict_to_vector(att) for att in self.reconstructed_projected]
+        # Convert to numpy arrays for efficient computation
+        orig_matrix = self.orig_vecs.astype(int)  # Convert bool to int for arithmetic
+        recon_matrix = self.recon_vecs.astype(int)
         
-        matches = []
-        used_recon = set()
+        # Compute intersection and union matrices all at once
+        # This is the vectorized equivalent of your nested loop
+        intersection = np.dot(orig_matrix, recon_matrix.T)  # Matrix multiplication gives intersections
         
-        for orig_vec in orig_vectors:
-            best_match = None
-            best_similarity = -1
-            
-            for i, recon_vec in enumerate(recon_vectors):
-                if i in used_recon:
-                    continue
-                
-                # Hamming similarity = 1 - normalized Hamming distance
-                similarity = 1 - hamming(orig_vec, recon_vec)
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match = i
-            
-            if best_match is not None:
-                matches.append(best_similarity)
-                used_recon.add(best_match)
-            else:
-                matches.append(0.0)
+        # \sum_k \mathbf{1}\{a_k \neq b_k\} \;=\;\bigl(\text{#1’s in }a\text{ but not }b\bigr) \;+\;\bigl(\text{#1’s in }b\text{ but not }a\bigr) \;=\;\bigl(\sum a_k - \sum (a_k b_k)\bigr) \;+\;\bigl(\sum b_k - \sum(a_k b_k)\bigr) \;=\;\sum(a) + \sum(b) \;-\;2\,\mathrm{inter}(a,b).
+        orig_sums = np.sum(orig_matrix, axis=1, keepdims=True)  # Sum of each original vector
+        recon_sums = np.sum(recon_matrix, axis=1)  # Sum of each reconstructed vector
+        hamming_distances = orig_sums + recon_sums - 2 * intersection
         
-        return np.mean(matches) if matches else 0.0
-    
+        # For Hungarian algorithm, we use distances directly as costs
+        # (no need to negate since we want minimum distance)
+        row, col = linear_sum_assignment(hamming_distances)
+        
+        # Extract the matched similarities
+        match_sims = [hamming_distances[i, j] for i, j in zip(row, col)
+                      if i < len(self.orig_vecs) and j < len(self.recon_vecs)]
+        
+        if not match_sims:
+            return 0.0
+
+        # Convert mean Hamming distance to similarity on [0,1]
+        vector_length = orig_matrix.shape[1]
+        mean_distance = np.mean(match_sims)
+        similarity = 1.0 - (mean_distance / vector_length)
+        return limit_float(similarity)
+
     def compute_coverage(self):
         """
         Decoupled precision/recall with threshold.
@@ -302,80 +258,7 @@ class AttractorComparison:
             'total_original': len(orig_set),
             'total_reconstructed': len(recon_set)
         }
-    
-    def compute_basin_stability_comparison(self):
-        """
-        Compare basin stability characteristics between attractor sets.
         
-        Returns:
-        --------
-        dict : Basin stability comparison metrics
-        """
-        if not self.common_nodes:
-            return {'stability_correlation': 0.0, 'size_ratio': 0.0}
-        
-        orig_count = len(self.original_projected)
-        recon_count = len(self.reconstructed_projected)
-        
-        # Simple size ratio metric
-        size_ratio = min(orig_count, recon_count) / max(orig_count, recon_count)
-        
-        # Stability correlation based on attractor diversity
-        orig_diversity = self._compute_diversity(self.original_projected)
-        recon_diversity = self._compute_diversity(self.reconstructed_projected)
-        
-        diversity_correlation = 1 - abs(orig_diversity - recon_diversity)
-        
-        return {
-            'stability_correlation': limit_float(diversity_correlation),
-            'size_ratio': limit_float(size_ratio),
-            'original_count': orig_count,
-            'reconstructed_count': recon_count,
-            'original_diversity': limit_float(orig_diversity),
-            'reconstructed_diversity': limit_float(recon_diversity)
-        }
-    
-    def compute_functional_similarity(self):
-        """
-        Compute functional similarity based on active node patterns.
-        
-        Returns:
-        --------
-        dict : Functional similarity metrics
-        """
-        if not self.common_nodes:
-            return {'functional_similarity': 0.0, 'pattern_overlap': 0.0}
-        
-        # Compute active node patterns
-        orig_patterns = self._extract_active_patterns(self.original_projected)
-        recon_patterns = self._extract_active_patterns(self.reconstructed_projected)
-        
-        # Pattern overlap
-        common_patterns = orig_patterns.intersection(recon_patterns)
-        all_patterns = orig_patterns.union(recon_patterns)
-        
-        pattern_overlap = len(common_patterns) / len(all_patterns) if all_patterns else 0.0
-        
-        # Functional similarity based on node activity correlation
-        orig_activity = self._compute_node_activity(self.original_projected)
-        recon_activity = self._compute_node_activity(self.reconstructed_projected)
-        
-        activity_correlation = np.corrcoef(
-            [orig_activity.get(node, 0) for node in self.common_nodes],
-            [recon_activity.get(node, 0) for node in self.common_nodes]
-        )[0, 1] if len(self.common_nodes) > 1 else 0.0
-        
-        # Handle NaN correlation
-        if np.isnan(activity_correlation):
-            activity_correlation = 0.0
-        
-        return {
-            'functional_similarity': limit_float(activity_correlation),
-            'pattern_overlap': limit_float(pattern_overlap),
-            'common_patterns': len(common_patterns),
-            'total_patterns': len(all_patterns)
-        }
-    
     def comprehensive_comparison(self, Return_DF=True):
         """
         Perform comprehensive comparison using multiple metrics.
@@ -399,9 +282,9 @@ class AttractorComparison:
         
         # Compute composite score
         weights = {
-            'jaccard': 0.3,
-            'hamming': 0.3,
-            'coverage_f1': 0.4
+            'jaccard': 0.4,
+            'hamming': 0.4,
+            'coverage_f1': 0.2
         }
         
         composite_score = (
@@ -417,12 +300,9 @@ class AttractorComparison:
     def to_dataframe(self, results):
         flat = results.copy()
         if 'coverage_metrics' in flat:
-            flat['coverage_metrics'] = flat.pop('coverage_metrics')
-        if 'basin_stability' in flat:
-            flat['basin_stability'] = flat.pop('basin_stability')
-        if 'functional_similarity' in flat:
-            flat['functional_similarity'] = flat.pop('functional_similarity')
-
+            cov = flat.pop('coverage_metrics')
+            for k, v in cov.items():
+                flat[k] = v
         # Create DataFrame
         df = pd.DataFrame([flat])
         return df

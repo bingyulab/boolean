@@ -1,10 +1,12 @@
-import re
+#!/usr/bin/env python3
 import pandas as pd
 import rpy2.robjects as ro
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 
 from collections import defaultdict
+import re
+
 
 def parse_namedlist_to_dataframes(named_list):
     """
@@ -197,3 +199,68 @@ def convert_caspo_string_format(caspo_string, output_file=None):
 def convert_caspo_csv_format(csv_file_or_df, output_file=None, frequency_threshold=0.5):
     """Convert CASPO CSV format to BoolNet."""
     return caspo_to_boolnet(csv_file_or_df, output_file, frequency_threshold)
+
+
+def caspo_to_sif(caspo_results, output_file=None, frequency_threshold=0.5):
+    """
+    Convert CASPO training results to SIF format.
+
+    Parameters:
+    - caspo_results: Can be either:
+        1. A string with comma-separated rules (first format)
+        2. A pandas DataFrame with columns: mapping, frequency, inclusive, exclusive
+        3. A CSV file path containing the DataFrame format
+    - output_file: Path to save the SIF file (optional)
+    - frequency_threshold: Minimum frequency to include a rule (default: 0.5)
+
+    Returns:
+    - Boolean indicating success/failure
+    - String containing the SIF content (if successful)
+    """
+    try:
+        # Load or parse input
+        if isinstance(caspo_results, str):
+            if caspo_results.endswith('.csv'):
+                df = pd.read_csv(caspo_results)
+                rules = df[df['frequency'] >= frequency_threshold]['mapping'].tolist()
+            elif ',' in caspo_results and '<-' in caspo_results:
+                rules = [rule.strip() for rule in caspo_results.split(',')]
+            else:
+                raise ValueError("Invalid string format for CASPO results")
+        elif isinstance(caspo_results, pd.DataFrame):
+            df = caspo_results
+            rules = df[df['frequency'] >= frequency_threshold]['mapping'].tolist()
+        else:
+            raise ValueError("Unsupported input format for CASPO results")
+
+        sif_lines = []
+
+        for rule in rules:
+            if '<-' not in rule:
+                continue
+
+            target, regulators = rule.split('<-')
+            target = target.strip()
+            # split on '+' but keep '!' attached
+            for part in regulators.split('+'):
+                part = part.strip()
+                sign = +1
+                if part.startswith('!'):
+                    sign = -1
+                    regulator = part[1:]
+                else:
+                    regulator = part
+                sif_lines.append(f"{regulator}\t{sign}\t{target}")
+
+        sif_content = "\n".join(sif_lines)
+
+        if output_file:
+            with open(output_file, 'w') as f:
+                f.write(sif_content)
+            print(f"SIF file saved to: {output_file}")
+
+        return True, sif_content
+
+    except Exception as e:
+        print(f"Error converting CASPO to SIF: {e}")
+        return False, None

@@ -1,12 +1,15 @@
 from caspo import core, learn
 import pandas as pd
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 import functools as ft
 import time
 from tools.config import dataset_map
 import seaborn as sns
 from matplotlib import pyplot as plt
 from tools.comparison import limit_float, AttractorAnalysis
+from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
 
 def configure_mt(config, proxy, overwrite=None):
@@ -93,9 +96,10 @@ class CaspoOptimizer:
         self.sif_file = os.path.join(self.input_path, sif_name)
         self.data_file = os.path.join(self.input_path, rdata_name)
         self.midas_file = os.path.join(self.input_path, midas_name)
-        self.output_file = os.path.join("output/cellnopt", self.dataset, self.filename)       
+        self.output_file = os.path.join("output/caspo", self.dataset, self.filename)       
         
         self.GD_MODEL = os.path.join("data", base_name, bnet_name)
+        self.GD_MODEL_SIF = os.path.join("data", base_name, sif_name)
         
         if not os.path.exists(self.output_file):
             os.makedirs(self.output_file, exist_ok=True) 
@@ -104,6 +108,12 @@ class CaspoOptimizer:
         # Placeholder for multi-thread configuration if needed
         pass
 
+    def save_network(self, learner, dataset):
+        df = learner.networks.to_dataframe(dataset=dataset, size=True)
+        df.to_csv(os.path.join(self.output_file, 'networks.csv'), index=False)
+        networks_distribution(df, self.output_file)
+        return df
+        
     def save_stats(self, learner, dataset):
         rows = []
         exclusive, inclusive = learner.networks.combinatorics()
@@ -117,15 +127,28 @@ class CaspoOptimizer:
 
         df = pd.DataFrame(rows)
         order = ["mapping", "frequency", "inclusive", "exclusive"]
-        df[order].to_csv(os.path.join(self.output_file, 'stats-networks.csv'), index=False)
-        mappings_frequency(df, self.output_file)
-        from tools.functions import convert_caspo_csv_format
+        print(f"Saving to {os.path.join(self.output_file, 'stats-networks.csv')}")
+        df.to_csv(os.path.join(self.output_file, 'stats-networks.csv'), index=False)
+        # mappings_frequency(df, self.output_file)
+        print(f"Dataframe with {df.shape} mappings saved.")
+        if df is not None or not df.empty:   
+            _ = self.save_network(learner, dataset)
+        else:
+            df = self.save_network(learner, dataset)
+            df = df[(df['size'] == df['size'].max()) & (df['size'] > 0)]
+            if not df.empty:
+                row = df.drop(columns=["mse", "size"]).iloc[0]
+                mappings = row[row > 0].index.tolist()
+                df = pd.DataFrame({
+                    'mapping':   mappings,
+                    'frequency': [1.0] * len(mappings),
+                    'exclusive': ['']  * len(mappings),
+                    'inclusive': ['']  * len(mappings),
+                })
+
+        from tools.functions import convert_caspo_csv_format, caspo_to_sif
         convert_caspo_csv_format(df, os.path.join(self.output_file, f'OPT_{self.dataset}.bnet'))
-        
-    def save_networks(self, learner, dataset):
-        df = learner.networks.to_dataframe(dataset=dataset, size=True)
-        df.to_csv(os.path.join(self.output_file, 'networks.csv'), index=False)
-        networks_distribution(df, self.output_file)
+        caspo_to_sif(df, os.path.join(self.output_file, f'OPT_{self.dataset}.sif'))
 
     def evaluate_model(self, total_time):
         print("Evaluating model...")
@@ -140,10 +163,27 @@ class CaspoOptimizer:
         results['method']             = "Caspo"
         results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(self.output_file, "results.csv"), index=False)
+
+        opt_sif = os.path.join(self.output_file, f"OPT_{self.dataset}.sif")
+        print(f"Comparing original topology {self.GD_MODEL} with optimized topology {opt_sif}")
+        sif_net1 = BooleanNetworkGraph.read_sif(self.GD_MODEL_SIF)
+        sif_net2 = BooleanNetworkGraph.read_sif(opt_sif)
+        
+        print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
+        print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
+        
+        # Quick similarity check
+        sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)
+        jaccard = sif_analyzer.jaccard_similarity()
+
+        print(f"Jaccard similarity between SIF networks: {jaccard}")
+        results['jaccard_topology'] = jaccard
         return results    
     
     def run(self):
+        print(f"Running Caspo on dataset: {self.dataset} with change percent: {self.ChangePct}")
         graph = core.Graph.read_sif(self.sif_file)
+        print(f"Input SIF file: {self.sif_file}, MIDAS file: {self.midas_file}, Output directory: {self.output_file}")
         dataset = core.Dataset(self.midas_file, self.time)
         zipped = graph.compress(dataset.setup)
 
@@ -163,7 +203,6 @@ class CaspoOptimizer:
         print("Weighted MSE: %.4f" % learner.networks.weighted_mse(dataset))
 
         self.save_stats(learner, dataset)
-        self.save_networks(learner, dataset)
         results = self.evaluate_model(total_time)
         return results
         
@@ -172,7 +211,7 @@ if __name__ == "__main__":
     
     from tools.config import NetworkPerturbationConfig, AdaptiveParameterManager
     config = NetworkPerturbationConfig(
-        change_percent=0.0,
+        change_percent=0.8,
         size_adaptation_strength=2.0,
         generalization_focus=True
     )

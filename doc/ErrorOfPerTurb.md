@@ -65,3 +65,48 @@ Error in cat(genes[i], ", ", geneStrings[i], "\n", sep = "") :
 ```
 
 The `SIFToBoolNet` is located in [`tools/functions.R`](https://gitlab.com/uniluxembourg/lcsb/BioCore/disease_maps/machine-learning-for-boolean-networks/genetic-algorithms-bingyu-jiang-internship/-/blob/bf8fadcb280a0b5cd17c56d90ca0b9735458ac65/tools/functions.R), which works fine for the original model, but not for the perturbed model. 
+
+```r
+library("CellNOptR")
+pknmodel <- readSIF("data/ToyModel/0_Modified/ToyModel.sif")
+midas_file = "data/ToyModel/0_Modified/ToyModel.csv"
+md<- readMIDAS(midas_file, verbose=TRUE)
+cnolist <- makeCNOlist(md, subfield=FALSE)
+model <- preprocessing(data = cnolist, model = pknmodel)
+
+library(here)
+# Source helper functions
+source(here::here("tools", "functions.R"))
+t <- system.time(resILP <- ilpBinaryT1New(
+                    CNOlist(cnolist), model, md,
+                    cplexPath="/home/users/bjiang/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex", 
+                           sizeFac = 0.0001, mipGap=0, relGap=0, 
+                           timelimit=3600, 
+                           method = "quadratic", numSolutions = 100, 
+                           limitPop = 500, poolIntensity = 0, 
+                           poolReplace = 2))
+
+print("Running ILP optimization...");
+cnolist <- CNOlist(cnolist);
+resILPAll <- list();
+exclusionList <- NULL;
+cnolistReal <- cnolist;       
+writeMIDAS(CNOlist = cnolist, filename = "tempMD.csv", 
+    timeIndices = c(1, 2), overwrite = TRUE);
+md <- readMIDAS(MIDASfile = "tempMD.csv");
+file.remove("tempMD.csv");
+cnolist <- compatCNOlist(object = cnolist); 
+options(scipen = 10); 
+cnolist <- makeCNOlist(md,FALSE);
+
+t <- system.time(resILP <- CellNOptR:::createAndRunILP(
+                    model, md, cnolistReal,
+                    cplexPath="~/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex", accountForModelSize = TRUE, 
+                           sizeFac = 0.0001, mipGap=0, relGap=0, 
+                           timelimit=3600, 
+                           method = "quadratic", numSolutions = 100, 
+                           limitPop = 500, poolIntensity = 0, 
+                           poolReplace = 2))
+
+
+```

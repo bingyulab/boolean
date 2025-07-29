@@ -5,6 +5,8 @@ from collections import defaultdict
 from scipy.stats import ks_2samp
 import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple, Any
+from tools.comparison import limit_float
+
 
 class BooleanNetworkGraph(nx.MultiDiGraph):
     """
@@ -190,8 +192,8 @@ class NetworkTopologyAnalyzer:
         
         intersection = len(edges1.intersection(edges2))
         union = len(edges1.union(edges2))
-        
-        return intersection / union if union > 0 else 0.0
+
+        return limit_float(intersection / union) if union > 0 else 0.0
 
     def node_overlap_similarity(self):
         """

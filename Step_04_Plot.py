@@ -4,19 +4,42 @@ import seaborn as sns
 import numpy as np
 import os
 from pathlib import Path
+import glob
+
+import argparse
 
 # Set up the plotting style for better-looking figures
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
 
+# Define the methods and their colors for consistent visualization
+methods = ['Caspo', 'VNS', 'GA', 'ILP']
+colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#FF7F00']  # Red, Blue, Green, Orange (ColorBrewer Set1)
+method_colors = dict(zip(methods, colors))
+    
+    
+# Helper to plot a metric
+def plot_metric(df, ax, metric, title, marker):
+    for m in methods:
+        mdata = df[df['method'] == m]
+        ax.plot(
+            mdata['change_percent'], mdata[metric],
+            marker=marker, linewidth=2.5, markersize=6,
+            label=m, color=method_colors[m]
+        )
+    ax.set_xlabel('Change Percentage')
+    ax.set_ylabel(title)
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+        
+        
 def create_comparison_plots(df, dataset_name='toy'):
     """
     Create comprehensive comparison plots for different methods across change percentages.
     
     Parameters:
     -----------
-    df : pandas.DataFrame
-        DataFrame containing the results with all the specified columns
     dataset_name : str
         Name of the dataset (used for folder creation)
     """
@@ -25,205 +48,60 @@ def create_comparison_plots(df, dataset_name='toy'):
     output_dir = Path(f"output/{dataset_name}")
     output_dir.mkdir(exist_ok=True)
     
-    # Define the methods and their colors for consistent visualization
-    methods = ['Caspo', 'VNS', 'GA', 'ILP']
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
-    method_colors = dict(zip(methods, colors))
-    
     # Define key metrics to focus on
     key_metrics = {
         'Similarity Metrics': ['jaccard_similarity', 'hamming_similarity', 'composite_score'],
         'Coverage Metrics': ['precision', 'recall', 'f1_score'],
-        'Stability Metrics': ['stability_correlation', 'size_ratio'],
-        'Functional Metrics': ['functional_similarity', 'pattern_overlap']
     }
     
     # Create figure 1: Core similarity metrics comparison
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     fig.suptitle('Core Similarity Metrics Comparison Across Methods', fontsize=16, fontweight='bold')
-    
-    # Plot Jaccard Similarity
-    ax1 = axes[0, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax1.plot(method_data['change_percent'], method_data['jaccard_similarity'], 
-                marker='o', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax1.set_xlabel('Change Percentage')
-    ax1.set_ylabel('Jaccard Similarity')
-    ax1.set_title('Jaccard Similarity Performance')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot Hamming Similarity
-    ax2 = axes[0, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax2.plot(method_data['change_percent'], method_data['hamming_similarity'], 
-                marker='s', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax2.set_xlabel('Change Percentage')
-    ax2.set_ylabel('Hamming Similarity')
-    ax2.set_title('Hamming Similarity Performance')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Plot Composite Score
-    ax3 = axes[1, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax3.plot(method_data['change_percent'], method_data['composite_score'], 
-                marker='^', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax3.set_xlabel('Change Percentage')
-    ax3.set_ylabel('Composite Score')
-    ax3.set_title('Overall Composite Score')
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-    
-    # Plot F1 Score
-    ax4 = axes[1, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax4.plot(method_data['change_percent'], method_data['f1_score'], 
-                marker='D', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax4.set_xlabel('Change Percentage')
-    ax4.set_ylabel('F1 Score')
-    ax4.set_title('F1 Score Performance')
-    ax4.legend()
-    ax4.grid(True, alpha=0.3)
-    
+
+    plot_metric(df, axes[0, 0], 'jaccard_similarity', 'Jaccard Similarity Performance', 'o')
+    plot_metric(df, axes[0, 1], 'hamming_similarity', 'Hamming Similarity Performance', 's')
+    plot_metric(df, axes[1, 0], 'composite_score', 'Overall Composite Score', '^')
+    plot_metric(df, axes[1, 1], 'f1_score', 'F1 Score Performance', 'D')
     plt.tight_layout()
-    plt.savefig(output_dir / 'core_similarity_metrics.png', dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_dir / 'core_similarity_metrics.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
     
     # Create figure 2: Coverage and precision metrics
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    fig, axes = plt.subplots(2, 1, figsize=(15, 12))
     fig.suptitle('Coverage and Precision Metrics Analysis', fontsize=16, fontweight='bold')
-    
-    # Plot Precision
-    ax1 = axes[0, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax1.plot(method_data['change_percent'], method_data['precision'], 
-                marker='o', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax1.set_xlabel('Change Percentage')
-    ax1.set_ylabel('Precision')
-    ax1.set_title('Precision Performance')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot Recall
-    ax2 = axes[0, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax2.plot(method_data['change_percent'], method_data['recall'], 
-                marker='s', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax2.set_xlabel('Change Percentage')
-    ax2.set_ylabel('Recall')
-    ax2.set_title('Recall Performance')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Plot Exact Matches
-    ax3 = axes[1, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax3.plot(method_data['change_percent'], method_data['exact_matches'], 
-                marker='^', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax3.set_xlabel('Change Percentage')
-    ax3.set_ylabel('Exact Matches')
-    ax3.set_title('Number of Exact Matches')
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-    
-    # Plot Common Nodes
-    ax4 = axes[1, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax4.plot(method_data['change_percent'], method_data['common_nodes'], 
-                marker='D', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax4.set_xlabel('Change Percentage')
-    ax4.set_ylabel('Common Nodes')
-    ax4.set_title('Number of Common Nodes')
-    ax4.legend()
-    ax4.grid(True, alpha=0.3)
-    
+
+    plot_metric(df, axes[0], 'precision', 'Precision Performance', 'o')
+    plot_metric(df, axes[1], 'recall', 'Recall Performance', 's')
     plt.tight_layout()
-    plt.savefig(output_dir / 'coverage_precision_metrics.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Create figure 3: Stability and functional metrics
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Stability and Functional Metrics Analysis', fontsize=16, fontweight='bold')
-    
-    # Plot Stability Correlation
-    ax1 = axes[0, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax1.plot(method_data['change_percent'], method_data['stability_correlation'], 
-                marker='o', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax1.set_xlabel('Change Percentage')
-    ax1.set_ylabel('Stability Correlation')
-    ax1.set_title('Basin Stability Correlation')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot Size Ratio
-    ax2 = axes[0, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax2.plot(method_data['change_percent'], method_data['size_ratio'], 
-                marker='s', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax2.set_xlabel('Change Percentage')
-    ax2.set_ylabel('Size Ratio')
-    ax2.set_title('Attractor Set Size Ratio')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Plot Functional Similarity
-    ax3 = axes[1, 0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax3.plot(method_data['change_percent'], method_data['functional_similarity'], 
-                marker='^', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax3.set_xlabel('Change Percentage')
-    ax3.set_ylabel('Functional Similarity')
-    ax3.set_title('Functional Similarity Score')
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-    
-    # Plot Pattern Overlap
-    ax4 = axes[1, 1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax4.plot(method_data['change_percent'], method_data['pattern_overlap'], 
-                marker='D', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
-    ax4.set_xlabel('Change Percentage')
-    ax4.set_ylabel('Pattern Overlap')
-    ax4.set_title('Pattern Overlap Score')
-    ax4.legend()
-    ax4.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'stability_functional_metrics.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Create figure 4: Performance summary heatmap
+    fig.savefig(output_dir / 'coverage_precision_metrics.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+            
+    # Create figure 3: Performance summary heatmap
     fig, ax = plt.subplots(figsize=(12, 8))
     
     # Calculate average performance for each method across all change percentages
-    performance_summary = df.groupby('method')[['jaccard_similarity', 'hamming_similarity', 
-                                               'composite_score', 'f1_score', 'precision', 
-                                               'recall', 'functional_similarity', 'stability_correlation']].mean()
-    
-    # Create heatmap
-    sns.heatmap(performance_summary.T, annot=True, fmt='.3f', cmap='RdYlBu_r', 
-                center=0.5, ax=ax, cbar_kws={'label': 'Performance Score'})
+    performance_summary = df.groupby('method')[['jaccard_similarity', 'hamming_similarity', 'jaccard_topology',
+                                                'composite_score', 'f1_score', 'precision', 'recall']].mean()
+
+    sns.heatmap(
+        performance_summary.T, annot=True, fmt='.3f',
+        cmap='RdYlBu_r', center=0.5,
+        cbar_kws={'label': 'Performance Score'},
+        ax=ax
+    )
     ax.set_title('Average Performance Summary Across All Metrics', fontsize=14, fontweight='bold')
     ax.set_xlabel('Methods')
     ax.set_ylabel('Metrics')
-    
     plt.tight_layout()
-    plt.savefig(output_dir / 'performance_summary_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close()
+    fig.savefig(output_dir / 'performance_summary_heatmap.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    
+    # Create figure 4: jaccard_topology plot    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plot_metric(df, ax, 'jaccard_topology', 'Jaccard Topology Performance', 'o')
+    plt.tight_layout()
+    fig.savefig(output_dir / 'jaccard_topology.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
     
     # Create figure 5: Runtime comparison
     if 'total_time' in df.columns:
@@ -278,34 +156,36 @@ def create_comparison_plots(df, dataset_name='toy'):
     print(f"Generated plots:")
     print(f"  - core_similarity_metrics.png")
     print(f"  - coverage_precision_metrics.png") 
-    print(f"  - stability_functional_metrics.png")
     print(f"  - performance_summary_heatmap.png")
+    print(f"  - jaccard_topology.png")
     if 'total_time' in df.columns:
         print(f"  - runtime_comparison.png")
     print(f"  - robustness_analysis.png")
 
-def load_and_plot_results(csv_file_path, dataset_name='toy'):
-    """
-    Load results from CSV file and create all comparison plots.
+def load_and_plot_results(dataset_name='toy'):
     
-    Parameters:
-    -----------
-    csv_file_path : str
-        Path to the CSV file containing results
-    dataset_name : str
-        Name of the dataset for folder creation
-    """
-    # Load the data
-    df = pd.read_csv(csv_file_path)
+    pattern = f"output/comparison_{dataset_name}_*.csv"  # note: `*` matches any characters except `/`
+
+    matching_files = glob.glob(pattern)   
     
-    # Verify required columns exist
-    required_columns = ['method', 'change_percent', 'jaccard_similarity', 'hamming_similarity', 
-                        'composite_score', 'precision', 'recall', 'f1_score']
+    # Read and concatenate all CSV files
+    df_list = []
+    for path in matching_files:
+        df = pd.read_csv(path)
+        df_list.append(df)
+
+    full_df = pd.concat(df_list, ignore_index=True)
     
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        print(f"Warning: Missing columns: {missing_columns}")
-    
+    avg_columns = [
+        'jaccard_similarity', 'hamming_similarity', 'composite_score',
+        'precision', 'recall', 'f1_score', 'true_positives', 'orig_total', 'recon_total',
+        'total_time', 'jaccard_topology'
+    ]
+
+    group_columns = ['method', 'change_percent']
+
+    df = full_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
+
     # Create all plots
     create_comparison_plots(df, dataset_name)
     
@@ -314,18 +194,27 @@ def load_and_plot_results(csv_file_path, dataset_name='toy'):
     print("=" * 50)
     for method in df['method'].unique():
         method_data = df[df['method'] == method]
+        avg_topo    = method_data['jaccard_topology'].mean()
         avg_composite = method_data['composite_score'].mean()
         avg_jaccard = method_data['jaccard_similarity'].mean()
-        print(f"{method.upper():>6}: Avg Composite Score = {avg_composite:.3f}, Avg Jaccard = {avg_jaccard:.3f}")
+        avg_hamming = method_data['hamming_similarity'].mean()
+        avg_f1      = method_data['f1_score'].mean()
+        print(f"{method.upper():>6}: Avg Composite Score = {avg_composite:.3f}, Avg Jaccard = {avg_jaccard:.3f}, Avg Hamming = {avg_hamming:.3f}, Avg F1 score = {avg_f1:.3f}, Avg Topology = {avg_topo:.3f}")
 
 
 # Example usage:
 if __name__ == "__main__":
-    # Replace 'your_results.csv' with the actual path to your CSV file
-    csv_file_path = 'output/comparison_results_toy.csv'
-    
+    parser = argparse.ArgumentParser(
+        description="Run model comparisons multiple times on a given dataset"
+    )
+    parser.add_argument(
+        "-d", "--dataset",
+        type=str,
+        default="toy",
+        help="Dataset to use for comparisons (default: 'toy')"
+    )
+    args = parser.parse_args()
+    dataset = args.dataset
     # Load and create plots
-    load_and_plot_results(csv_file_path, dataset_name='toy')
+    load_and_plot_results(dataset_name=dataset)
     
-    # Alternative: If you already have the DataFrame loaded
-    # create_comparison_plots(your_dataframe, dataset_name='toy')

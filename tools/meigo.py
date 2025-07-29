@@ -9,6 +9,7 @@ import shutil
 import json
 from tools.config import dataset_map
 from tools.comparison import limit_float, AttractorAnalysis
+from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
 
 class MEIGOOptimizer:
@@ -32,9 +33,10 @@ class MEIGOOptimizer:
         self.sif_file = os.path.join(self.input_path, sif_name)
         self.data_file = os.path.join(self.input_path, rdata_name)
         self.midas_file = os.path.join(self.input_path, midas_name)
-        self.output_file = os.path.join("output/cellnopt", self.dataset, self.filename)       
+        self.output_file = os.path.join("output/meigo", self.dataset, self.filename)       
         
         self.GD_MODEL = os.path.join("data", base_name, bnet_name)
+        self.GD_MODEL_SIF = os.path.join("data", base_name, sif_name)
         
         if not os.path.exists(self.output_file):
             os.makedirs(self.output_file, exist_ok=True)            
@@ -142,7 +144,7 @@ class MEIGOOptimizer:
                 iterprint={self.vns_config['iterprint']})
             t <- system.time(Results_VNS <- MEIGO(problem, opts, "VNS"))
             optModel <- cutModel(model, Results_VNS$xbest)
-            plotModel(optModel,cnolist)
+            # plotModel(optModel,cnolist)
             assign("optModel_VNS", Results_VNS, envir = .GlobalEnv)
             simResults <- simulate_CNO(model=model,#_orig,
                                 CNOlist=cnolist,
@@ -185,6 +187,21 @@ class MEIGOOptimizer:
         results['method']             = "VNS"
         results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
+
+        opt_sif = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
+        print(f"Comparing original topology {self.GD_MODEL} with optimized topology {opt_sif}")
+        sif_net1 = BooleanNetworkGraph.read_sif(self.GD_MODEL_SIF)
+        sif_net2 = BooleanNetworkGraph.read_sif(opt_sif)
+        
+        print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
+        print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
+        
+        # Quick similarity check
+        sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)
+        jaccard = sif_analyzer.jaccard_similarity()
+
+        print(f"Jaccard similarity between SIF networks: {jaccard}")
+        results['jaccard_topology'] = jaccard
         
         return results
 
@@ -203,7 +220,7 @@ class MEIGOOptimizer:
         print(f"Saving SIF to {sif_fname}...")
         
         r(f'''
-            writeSIF(optModel, file="{sif_fname}", overwrite=TRUE)
+            toSIF(optModel, file="{sif_fname}", overwrite=TRUE)
         ''')
         print(f"Saving RData to {rdata_fname}...")
         r(f'''
@@ -271,7 +288,7 @@ class MEIGOOptimizer:
         if method == "VNS":
             self.run_vns()
             # Save results
-            self._save_results("VNSR")
+            self._save_results("VNSR")            
             
             conversion_success = self.save_results(output_file)
             print(f"Results saved to {output_file}/")

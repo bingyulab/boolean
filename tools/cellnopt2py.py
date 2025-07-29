@@ -10,6 +10,7 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import r
 from tools.config import dataset_map
 from tools.comparison import limit_float, AttractorAnalysis
+from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
         
 class CellNOptAnalyzer:
@@ -17,30 +18,45 @@ class CellNOptAnalyzer:
     A Python class to interface with CellNOpt R package using RPy2
     """
 
-    def __init__(self, dataset="toy", manager=None):
+    def __init__(self, dataset="toy", manager=None, kflod=5):
         """Initialize the CellNOpt analyzer"""
         self.cellnoptr = importr('CellNOptR')
         self.PERTUB = True if manager.change_percent > 0 else False
         self.ChangePct = manager.change_percent
         self.ilp_config = manager.get_ilp_config()
         self.ga_config = manager.get_ga_config()
-        self.parse(dataset)
-        print("CellNOptR loaded successfully")
+        self.nfold = kflod
+        self.parse(dataset)        
+        
+        # Initialize results storage
+        self.cv_results = []
+        self.fold_performances = {}
+        print(f"CellNOpt Cross-Validator initialized for {dataset} with {self.nfold}-fold CV")
     
     def parse(self, dataset):
         if dataset not in dataset_map:
             raise ValueError(f"Unknown dataset: {dataset}")
 
         base_name, sif_name, rdata_name, midas_name, bnet_name, _ = dataset_map[dataset]
+        
+        # Core paths
         self.dataset = base_name
         self.filename = "0_Modified" if not self.PERTUB else f"{self.ChangePct * 100:.0f}_Modified"
+        
+        # Main data directory (where the perturbed network and CV splits are stored)
         self.input_path = os.path.join("data", base_name, self.filename)
+        
+        # Output directory for cross-validation results
+        self.cv_output_path = os.path.join("output/cellnopt", base_name, self.filename, "cross_validation")
+        
+        # Original model files
         self.sif_file = os.path.join(self.input_path, sif_name)
         self.data_file = os.path.join(self.input_path, rdata_name)
         self.midas_file = os.path.join(self.input_path, midas_name)
         self.output_file = os.path.join("output/cellnopt", self.dataset, self.filename)       
         
         self.GD_MODEL = os.path.join("data", base_name, bnet_name)
+        self.GD_MODEL_SIF = os.path.join("data", base_name, sif_name)
         
         if not os.path.exists(self.output_file):
             os.makedirs(self.output_file, exist_ok=True)
@@ -71,27 +87,7 @@ class CellNOptAnalyzer:
         r(f'cnolist <- makeCNOlist(readMIDAS("{self.midas_file}", verbose=TRUE), subfield=FALSE)')
         r(f'plotCNOlistPDF(CNOlist=CNOlist(cnolist), filename="{output_file}")') 
         return r('cnolist')
-    
-    def plot_network(self, cnolistPB=None, output_file="output/cellnopt/network_plot"):
-        """
-        Plot the network and save to PDF
-        Args:
-            output_file (str): Path to output PDF file
-        """
-        from rpy2.robjects import r
-        from rpy2.robjects.packages import importr
-        output_file = os.path.join(self.output_file, f"{self.dataset}_network_plot")
-        print(f"Plotting network and saving to {output_file}")
-        r(f'library(CellNOptR)')
-        r(f'library(CNORdt)')
-        r(f'library(Rgraphviz)')
-        r(f'library(RBGL)')
-        r(f'model <- readSBMLQual(file)')
-        if cnolistPB is not None:
-            r(f'plotModel(model, filename="{output_file}", output="SVG")')
-        else:
-            r(f'plotModel(model, cnolist, filename="{output_file}", output="SVG")')
-
+        
     def preprocess_network(self):
         """
         Preprocess the network and data
@@ -105,7 +101,7 @@ class CellNOptAnalyzer:
         r('model <- preprocessing(data = cnolist, model = pknmodel)')
         return r('model')
 
-    def optimize_network(self, output_file, PLOT=True, method='ga'):
+    def optimize_network(self, output_file, PLOT=True, method='ga', fold_idx=None):
         """
         Run Boolean network optimization
         Args:
@@ -149,35 +145,21 @@ class CellNOptAnalyzer:
                     plotModel(model, cnolist, bString=opt_results$bString, output="SVG", filename="{output_file}/{self.dataset}_mapback_evolFitT1_1.svg");
                     save(simResults,file=paste("{output_file}/{self.dataset}_evolSimRes.RData",sep=""))                    
                 ''')
+            # Extract results from R
+            training_score = limit_float(r('opt_results$bScore'), nbit=4)
         elif method == 'ilp':  
-            r(f'''
-                print("Running ILP optimization...");
-                cnolist <- CNOlist(cnolist);
-                resILPAll <- list();
-                exclusionList <- NULL;
-                cnolistReal <- cnolist;       
-                writeMIDAS(CNOlist = cnolist, filename = "tempMD.csv", 
-                        timeIndices = c(1, 2), overwrite = TRUE);
-                md <- readMIDAS(MIDASfile = "tempMD.csv");
-                file.remove("tempMD.csv");
-                cnolist <- compatCNOlist(object = cnolist); 
-                options(scipen = 10); 
-                cnolist <- makeCNOlist(md,FALSE);                           
-            ''')
-            r(f'''  
-                startILP <- Sys.time();
-                print("Creating LP file and running ILP...");   
-                t <- system.time(resILP <- CellNOptR:::createAndRunILP(
-                    model, md, cnolistReal, accountForModelSize = {self.ilp_config['accountForModelSize']}, 
+            print("Creating LP file and running ILP...")
+            r(f'''     
+                t <- system.time(opt_results <- ilpBinaryT1New(
+                    CNOlist(cnolist), model, cplexPath = "{self.ilp_config['cplexPath']}",
                     sizeFac = {self.ilp_config['sizeFac']}, mipGap={self.ilp_config['mipGap']}, 
                     relGap={self.ilp_config['relGap']}, timelimit={self.ilp_config['timelimit']}, 
-                    cplexPath = "{self.ilp_config['cplexPath']}", method = "{self.ilp_config['method']}", 
-                    numSolutions = {self.ilp_config['numSolutions']}, limitPop = {self.ilp_config['limitPop']}, 
-                    poolIntensity = {self.ilp_config['poolIntensity']}, poolReplace = {self.ilp_config['poolReplace']})
-                    );
-                endILP <- Sys.time();                
-                CellNOptR:::cleanupILP();
-                opt_results <- resILP;                
+                    method = "{self.ilp_config['method']}", numSolutions = {self.ilp_config['numSolutions']}, 
+                    limitPop = {self.ilp_config['limitPop']}, poolIntensity = {self.ilp_config['poolIntensity']}, 
+                    poolReplace = {self.ilp_config['poolReplace']})
+                    );              
+            ''')
+            r(f'''                             
                 optModel <- cutModel(model, opt_results$bitstringILP[[1]]);
                 simResults <- simulate_CNO(model=model,#_orig,
                             CNOlist=cnolist,
@@ -188,10 +170,20 @@ class CellNOptAnalyzer:
                     cutAndPlot(CNOlist = cnolist, model = model, bStrings = list(opt_results$bitstringILP[[1]]), plotPDF=TRUE)
                     plotModel(model, cnolist, bString=opt_results$bitstringILP[[1]], output="SVG", filename="{output_file}/{self.dataset}_ilpFitT1.svg");
                     save(simResults,file=paste("{output_file}/{self.dataset}_ilpSimRes.RData",sep=""))  
-                ''')
-        return r('optModel')          
+                ''')            
+            # Extract results from R
+            training_score = limit_float(r('opt_results$bScore'), nbit=4)
 
-    def save_results(self, output_dir):
+        # Save the optimized model for this fold
+        if fold_idx is not None:
+            self.save_fold_model(output_file, fold_idx)
+        
+        return {
+            'training_score': training_score,
+            'method': method
+        }       
+
+    def save_results(self, output_dir, fold_idx=None):
         """
         Save optimization results
         Args:
@@ -203,14 +195,21 @@ class CellNOptAnalyzer:
         r(f'''
             optModel <- processOptimizedModel(optModel)
         ''')
-        sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
-        rdata_fname = os.path.join(output_dir, f"OPT_{self.dataset}.RData")
-        boolnet_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
+
+        if fold_idx is None:
+            sif_fname = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
+            rdata_fname = os.path.join(output_dir, f"OPT_{self.dataset}.RData")
+            boolnet_fname = os.path.join(output_dir, f"OPT_{self.dataset}.bnet")
+        else:
+            sif_fname = os.path.join(output_dir, f"fold_{fold_idx}_optimized.sif")
+            rdata_fname = os.path.join(output_dir, f"fold_{fold_idx}_optimized.RData")
+            boolnet_fname = os.path.join(output_dir, f"fold_{fold_idx}_optimized.bnet")
+            
         
         print(f"Saving SIF to {sif_fname}...")
         
         r(f'''
-            writeSIF(optModel, file="{sif_fname}", overwrite=TRUE)
+            toSIF(optModel, file="{sif_fname}", overwrite=TRUE)
         ''')
         print(f"Saving RData to {rdata_fname}...")
         r(f'''
@@ -229,33 +228,6 @@ class CellNOptAnalyzer:
             result <- writeBnetFromModel(optModel, "{boolnet_fname}")
 
             verifyBoolNetConversion(optModel, "{boolnet_fname}")
-        ''')
-        r(f'''
-            namesFiles<-list(
-                dataPlot="{output_dir}/ModelGraph.pdf",
-                evolFitT1="{output_dir}/evolFitT1.pdf",
-                evolFitT2=NA,
-                simResultsT1="{output_dir}/SimResultsT1_1.pdf",
-                simResultsT2=NA,
-                scaffold="{output_dir}/Scaffold.sif",
-                scaffoldDot="{output_dir}/Scaffold.dot",
-                tscaffold="{output_dir}/TimesScaffold.EA",
-                wscaffold="{output_dir}/weightsScaffold.EA",
-                PKN="{output_dir}/PKN.sif",
-                PKNdot="{output_dir}/PKN.dot",
-                wPKN="{output_dir}/TimesPKN.EA",
-                nPKN="{output_dir}/nodesPKN.NA")
-        ''')
-        r(f'''
-            writeReport(
-                modelOriginal=pknmodel,
-                modelOpt=model,
-                optimResT1=opt_results,
-                optimResT2=NA,
-                CNOlist=cnolist,
-                directory="test",
-                namesFiles=namesFiles,
-                namesData=list(CNOlist="cnolist",model="Model"))
         ''')
         
     def evaluate_model(self, output_dir):
@@ -279,8 +251,23 @@ class CellNOptAnalyzer:
         results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(output_dir, "results.csv"), index=False)
 
-        return results  
-    
+        opt_sif = os.path.join(output_dir, f"OPT_{self.dataset}.sif")
+        print(f"Comparing original topology {self.GD_MODEL} with optimized topology {opt_sif}")
+        sif_net1 = BooleanNetworkGraph.read_sif(self.GD_MODEL_SIF)
+        sif_net2 = BooleanNetworkGraph.read_sif(opt_sif)
+
+        print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
+        print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
+        
+        # Quick similarity check
+        sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)
+        jaccard = sif_analyzer.jaccard_similarity()
+
+        print(f"Jaccard similarity between SIF networks: {jaccard}")
+        results['jaccard_topology'] = jaccard
+
+        return results
+
     def run_full_analysis(self, method="ga"):
         # Load network and data
         model = self.load_network()
@@ -296,7 +283,7 @@ class CellNOptAnalyzer:
         opt_results = self.optimize_network(PLOT=True, method=method, output_file=output_file)
 
         # Save results
-        self.save_results(output_file)
+        self.save_results(output_file, fold_idx=None)
         print(f"Results saved to {output_file}/")
         
         # Evaluate and cross-validate
@@ -304,7 +291,8 @@ class CellNOptAnalyzer:
         results = self.evaluate_model(output_file)        
         print("Analysis completed successfully!")
         return model, cnolist, results
-
+                
+        
 def main(dataset="toy", method="ga", manager=None):
     """Example usage of CellNOptAnalyzer"""
     
