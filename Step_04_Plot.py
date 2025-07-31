@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import scienceplots
 import numpy as np
 import os
 from pathlib import Path
@@ -9,14 +10,14 @@ import glob
 import argparse
 
 # Set up the plotting style for better-looking figures
-plt.style.use('seaborn-v0_8')
-sns.set_palette("husl")
+# plt.style.use('seaborn-v0_8')
+# sns.set_palette("husl")
+plt.style.use('science')
 
 # Define the methods and their colors for consistent visualization
-methods = ['Caspo', 'VNS', 'GA', 'ILP']
+methods = ['CASPO', 'VNS', 'GA', 'ILP']
 colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#FF7F00']  # Red, Blue, Green, Orange (ColorBrewer Set1)
 method_colors = dict(zip(methods, colors))
-    
     
 # Helper to plot a metric
 def plot_metric(df, ax, metric, title, marker):
@@ -56,7 +57,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     # Create figure 1: Core similarity metrics comparison
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    fig.suptitle('Core Similarity Metrics Comparison Across Methods', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Core Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
     plot_metric(df, axes[0, 0], 'jaccard_similarity', 'Jaccard Similarity Performance', 'o')
     plot_metric(df, axes[0, 1], 'hamming_similarity', 'Hamming Similarity Performance', 's')
@@ -68,7 +69,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     # Create figure 2: Coverage and precision metrics
     fig, axes = plt.subplots(2, 1, figsize=(15, 12))
-    fig.suptitle('Coverage and Precision Metrics Analysis', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Coverage and Precision Metrics Analysis of {dataset_name}', fontsize=16, fontweight='bold')
 
     plot_metric(df, axes[0], 'precision', 'Precision Performance', 'o')
     plot_metric(df, axes[1], 'recall', 'Recall Performance', 's')
@@ -89,7 +90,7 @@ def create_comparison_plots(df, dataset_name='toy'):
         cbar_kws={'label': 'Performance Score'},
         ax=ax
     )
-    ax.set_title('Average Performance Summary Across All Metrics', fontsize=14, fontweight='bold')
+    ax.set_title(f'Average Performance Summary Across All Metrics of {dataset_name}', fontsize=14, fontweight='bold')
     ax.set_xlabel('Methods')
     ax.set_ylabel('Metrics')
     plt.tight_layout()
@@ -104,8 +105,8 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.close(fig)
     
     # Create figure 5: Runtime comparison
-    if 'total_time' in df.columns:
-        fig, ax = plt.subplots(figsize=(10, 6))
+    if 'total_time' in df.columns:      
+        fig, ax = plt.subplots(figsize=(10, 6))     
         
         for method in methods:
             method_data = df[df['method'] == method]
@@ -114,7 +115,7 @@ def create_comparison_plots(df, dataset_name='toy'):
         
         ax.set_xlabel('Change Percentage')
         ax.set_ylabel('Total Time (log scale)')
-        ax.set_title('Runtime Comparison Across Methods')
+        ax.set_title(f'Runtime Comparison Across Methods of {dataset_name}')
         ax.legend()
         ax.grid(True, alpha=0.3)
         
@@ -122,17 +123,18 @@ def create_comparison_plots(df, dataset_name='toy'):
         plt.savefig(output_dir / 'runtime_comparison.png', dpi=300, bbox_inches='tight')
         plt.close()
     
-    # Create figure 6: Robustness analysis (performance degradation)
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # Create figure 6: Robustness analysis (performance degradation)    
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
-    metrics_to_analyze = ['composite_score', 'jaccard_similarity', 'f1_score']
-    
+    metrics_to_analyze = ['composite_score', 'jaccard_similarity', 'hamming_similarity', 'jaccard_topology']
+
     for i, metric in enumerate(metrics_to_analyze):
-        ax_sub = plt.subplot(2, 2, i+1)
+        ax_sub = axes[i // 2, i % 2]
         
         for method in methods:
-            method_data = df[df['method'] == method].sort_values('change_percent')
+            method_data = df[df['method'] == method]
+            # print(f"Processing method: {method} for metric: {metric}")
             baseline = method_data[method_data['change_percent'] == 0.0][metric].iloc[0]
             
             # Calculate relative performance (performance / baseline)
@@ -143,7 +145,7 @@ def create_comparison_plots(df, dataset_name='toy'):
         
         ax_sub.set_xlabel('Change Percentage')
         ax_sub.set_ylabel(f'Relative {metric.replace("_", " ").title()}')
-        ax_sub.set_title(f'Robustness: {metric.replace("_", " ").title()}')
+        ax_sub.set_title(f'Robustness: {metric.replace("_", " ").title()} of {dataset_name}')
         ax_sub.legend()
         ax_sub.grid(True, alpha=0.3)
         ax_sub.axhline(y=1.0, color='black', linestyle='--', alpha=0.5)
@@ -151,6 +153,24 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.tight_layout()
     plt.savefig(output_dir / 'robustness_analysis.png', dpi=300, bbox_inches='tight')
     plt.close()
+
+    # 7 plot number of reconstruct attractors
+    fig, ax = plt.subplots(figsize=(12, 8))
+        
+    for method in methods:
+        method_data = df[df['method'] == method]
+        ax.semilogy(method_data['change_percent'], method_data['recon_total'], 
+                    marker='o', linewidth=2.5, markersize=6, label=method, color=method_colors[method])
+
+    ax.set_xlabel('Change Percentage')
+    ax.set_ylabel('Number of Reconstructed Attractors')
+    ax.set_title(f'Number of Reconstructed Attractors Across Methods of {dataset_name}')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'reconstructed_attractors.png', dpi=300, bbox_inches='tight')
+    plt.close()            
     
     print(f"All plots have been saved to the '{dataset_name}' directory!")
     print(f"Generated plots:")
@@ -161,20 +181,61 @@ def create_comparison_plots(df, dataset_name='toy'):
     if 'total_time' in df.columns:
         print(f"  - runtime_comparison.png")
     print(f"  - robustness_analysis.png")
+    print(f"  - reconstructed_attractors.png")
+
+def compute_attractor_count_penalty(self, expected_attractors=None):
+    """
+    Penalize networks that deviate significantly from expected attractor counts.
+    """
+    if expected_attractors is None:
+        expected_attractors = len(self.original_attractors)
+    
+    actual_count = len(self.reconstructed_attractors)
+    
+    # Use a sigmoid-like penalty that's gentle for small deviations
+    # but harsh for large ones
+    ratio = actual_count / max(expected_attractors, 1)
+    
+    if ratio <= 1:
+        penalty = 1.0  # No penalty for fewer attractors
+    else:
+        # Penalty increases rapidly after 2x the expected count
+        penalty = 1.0 / (1.0 + 0.5 * (ratio - 1)**2)
+    
+    return penalty
+
+def rescale_similarity(df, metric):
+    recon_size = df['recon_total']
+    orig_size = df['orig_total']
+    ratio = orig_size / max(orig_size, 1)
+    if ratio <= 1:
+        penalty = 1.0  # No penalty for fewer attractors
+    else:
+        # Penalty increases rapidly after 2x the expected count
+        penalty = 2.0 / (1.0 + np.exp(0.5 * (ratio - 2)))
+    return df[metric] * penalty
+
+def load_results(pattern):
+    paths = glob.glob(pattern)
+    if not paths:
+        raise FileNotFoundError(f"No files match pattern {pattern}")
+    dfs = []
+    for p in paths:
+        df = pd.read_csv(p)
+        dfs.append(df)
+    return pd.concat(dfs, ignore_index=True)
+
 
 def load_and_plot_results(dataset_name='toy'):
     
     pattern = f"output/comparison_{dataset_name}_*.csv"  # note: `*` matches any characters except `/`
 
-    matching_files = glob.glob(pattern)   
+    full_df = load_results(pattern)
+    print(full_df.head())
+    full_df['jaccard_similarity'] = full_df.apply(lambda row: rescale_similarity(row, 'jaccard_similarity'), axis=1)
+    full_df['hamming_similarity'] = full_df.apply(lambda row: rescale_similarity(row, 'hamming_similarity'), axis=1)    
     
-    # Read and concatenate all CSV files
-    df_list = []
-    for path in matching_files:
-        df = pd.read_csv(path)
-        df_list.append(df)
-
-    full_df = pd.concat(df_list, ignore_index=True)
+    print(full_df.head())
     
     avg_columns = [
         'jaccard_similarity', 'hamming_similarity', 'composite_score',
@@ -185,7 +246,8 @@ def load_and_plot_results(dataset_name='toy'):
     group_columns = ['method', 'change_percent']
 
     df = full_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
-
+    
+    df['dataset'] = dataset_name
     # Create all plots
     create_comparison_plots(df, dataset_name)
     
@@ -201,6 +263,41 @@ def load_and_plot_results(dataset_name='toy'):
         avg_f1      = method_data['f1_score'].mean()
         print(f"{method.upper():>6}: Avg Composite Score = {avg_composite:.3f}, Avg Jaccard = {avg_jaccard:.3f}, Avg Hamming = {avg_hamming:.3f}, Avg F1 score = {avg_f1:.3f}, Avg Topology = {avg_topo:.3f}")
 
+    toy_file = glob.glob(f"output/comparison_toy_*.csv")
+    if dataset_name != 'toy' and (len(toy_file) > 0): 
+        print("Loading toy dataset for comparison...")       
+        toy_df = load_results(f"output/comparison_toy_*.csv")
+        toy_df = toy_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
+        toy_df['dataset'] = "Toy"
+        combined_df = pd.concat([df, toy_df], ignore_index=True)
+
+        for metric in ['jaccard_similarity', 'hamming_similarity', 'composite_score', 'total_time', 'jaccard_topology', 'recon_total']:
+            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+            fig.suptitle(f'{metric} Similarity Metrics Comparison Across Network', fontsize=16, fontweight='bold')
+
+            
+            for j, dataset in enumerate([dataset_name, 'Toy']):
+                dataset_data = combined_df[combined_df['dataset'] == dataset]
+
+                for i, m in enumerate(methods):
+                    ax = axes[i%2, i//2]
+                    method_data = dataset_data[dataset_data['method'] == m]
+                    ax.plot(
+                        method_data['change_percent'], 
+                        method_data[metric],
+                        marker='o', 
+                        linewidth=2.5, 
+                        markersize=6,
+                        label=dataset,
+                    )
+                    ax.set_xlabel('Change Percentage')
+                    ax.set_ylabel(f"{metric} Comparison")
+                    ax.set_title(f'Method: {m.upper()}')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            fig.savefig(f'output/{dataset_name}/size_comparison_{metric}.png', dpi=300, bbox_inches='tight')
+            plt.close(fig)
 
 # Example usage:
 if __name__ == "__main__":

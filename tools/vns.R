@@ -36,6 +36,8 @@ option_list <- list(
               help="Maximum distance for neighborhood structures in VNS [default: %default]"),
   make_option(c("-i", "--iterprint"), type="integer", default=1,
               help="Print frequency for VNS iterations (0=no print, 1=print) [default: %default]"),
+  make_option(c("-P", "--preprocessing"), type="logical", default=TRUE,
+              help="Preprocess network before optimization [default: %default]"),
   make_option(c("-v", "--verbose"), type="logical", default=TRUE,
               help="Verbose output [default: %default]"),
   make_option(c("-o", "--output"), type="character", default="output/meigo",
@@ -149,7 +151,8 @@ save_meigo_results <- function(results_var_name, output_path, method_name) {
 }
 
 # Main VNS optimization function
-run_vns_optimization <- function(dataset_name, vns_config, change_percent = 0.0, output_base = "output/meigo") {
+run_vns_optimization <- function(dataset_name, vns_config, change_percent = 0.0, 
+                                 output_base = "output/meigo", PreprocessingNetwork = TRUE) {
   
   cat("=== Starting VNS (MEIGO) Optimization ===\n")
   cat("Dataset:", dataset_name, "\n")
@@ -308,7 +311,7 @@ run_vns_optimization <- function(dataset_name, vns_config, change_percent = 0.0,
   results_data <- data.frame(
     dataset = dataset_name,
     method = "VNS",
-    change_percent = change_percent,
+    change_percent = round(change_percent, 4),
     training_score = round(Results_VNS$fbest, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
@@ -355,7 +358,8 @@ main <- function() {
       dataset_name = opt$dataset,
       vns_config = vns_config,
       change_percent = opt$change_percent,
-      output_base = opt$output
+      output_base = opt$output,
+      PreprocessingNetwork = opt$preprocessing
     )
     
     cat("\n=== Analysis Complete ===\n")

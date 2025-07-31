@@ -49,7 +49,7 @@ class BooleanNetworkGraph(nx.MultiDiGraph):
         BooleanNetworkGraph
             Created graph instance
         """
-        df = pd.read_csv(path, delim_whitespace=True, names=['source', 'interaction', 'target']).drop_duplicates()
+        df = pd.read_csv(path, sep=r'\s+', names=['source', 'interaction', 'target']).drop_duplicates()
         
         # Map interaction types to signs
         sign_mapping = {

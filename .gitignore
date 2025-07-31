@@ -177,4 +177,8 @@ Install/*.bin
 output/
 test/
 tmp.sif
+
+data/*/*_Modified/
+
 *.pdf
+*.RData

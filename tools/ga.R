@@ -38,6 +38,8 @@ option_list <- list(
               help="NA factor for GA [default: %default]"),
   make_option(c("-t", "--maxtime"), type="integer", default=60,
               help="Maximum time in seconds for GA [default: %default]"),
+  make_option(c("-P", "--preprocessing"), type="logical", default=TRUE,
+              help="Preprocess network before optimization [default: %default]"),
   make_option(c("-v", "--verbose"), type="logical", default=TRUE,
               help="Verbose output [default: %default]"),
   make_option(c("-o", "--output"), type="character", default="output/cellnopt",
@@ -72,7 +74,7 @@ get_dataset_config <- function(dataset_name) {
 
 # Main GA optimization function
 run_ga_optimization <- function(dataset_name, ga_config, change_percent = 0.0, 
-                                output_base = "output/cellnopt") {
+                                output_base = "output/cellnopt", PreprocessingNetwork = TRUE) {
   
   cat("=== Starting GA Optimization ===\n")
   cat("Dataset:", dataset_name, "\n")
@@ -123,6 +125,14 @@ run_ga_optimization <- function(dataset_name, ga_config, change_percent = 0.0,
                  filename = file.path(output_path, paste0(dataset_config$name, "_CNOlist.pdf")))
   
   # Preprocess network
+  if (PreprocessingNetwork) {
+    cat("Preprocessing network...\n")
+    cat("Finding non-observable/non-controllable species and compressing model...\n")
+    model <- preprocessing(data = cnolist, model = pknmodel)
+  } else {
+    model <- pknmodel
+  }
+
   cat("\n=== Preprocessing Network ===\n")
   cat("Finding non-observable/non-controllable species and compressing model...\n")
   model <- preprocessing(data = cnolist, model = pknmodel)
@@ -208,7 +218,7 @@ run_ga_optimization <- function(dataset_name, ga_config, change_percent = 0.0,
   results_summary <- data.frame(
     dataset = dataset_name,
     method = "GA",
-    change_percent = change_percent,
+    change_percent = round(change_percent, 4),
     training_score = round(opt_results$bScore, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
     maxGens = ga_config$maxGens,
@@ -255,7 +265,8 @@ main <- function() {
       dataset_name = opt$dataset,
       ga_config = ga_config,
       change_percent = opt$change_percent,
-      output_base = opt$output
+      output_base = opt$output,
+      PreprocessingNetwork = opt$preprocessing
     )
     
     cat("\nGA optimization completed successfully!\n")

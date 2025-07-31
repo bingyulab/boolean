@@ -38,6 +38,8 @@ option_list <- list(
               help="Solution pool search intensity [default: %default]"),
   make_option(c("-p", "--pool_replace"), type="integer", default=2,
               help="Solution pool replacement strategy [default: %default]"),
+  make_option(c("-P", "--preprocessing"), type="logical", default=TRUE,
+              help="Preprocess network before optimization [default: %default]"),
   make_option(c("-v", "--verbose"), type="logical", default=TRUE,
               help="Verbose output [default: %default]"),
   make_option(c("-o", "--output"), type="character", default="output/cellnopt",
@@ -71,7 +73,8 @@ get_dataset_config <- function(dataset_name) {
 }
 
 # Main ILP optimization function
-run_ilp_optimization <- function(dataset_name, ilp_config, change_percent = 0.0, output_base = "output/cellnopt") {
+run_ilp_optimization <- function(dataset_name, ilp_config, change_percent = 0.0, 
+                                 output_base = "output/cellnopt", PreprocessingNetwork = TRUE) {
   
   cat("=== Starting ILP Optimization ===\n")
   cat("Dataset:", dataset_name, "\n")
@@ -199,7 +202,7 @@ run_ilp_optimization <- function(dataset_name, ilp_config, change_percent = 0.0,
   results_summary <- data.frame(
     dataset = dataset_name,
     method = "ILP",
-    change_percent = change_percent,
+    change_percent = round(change_percent, 4),
     training_score = round(opt_results$bScore, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
     sizeFac = ilp_config$sizeFac,
@@ -244,11 +247,12 @@ main <- function() {
     )
     
     # Run ILP optimization
-    results <- run_ilp_optimization(
+    results <- run_ilp_optimization(      
       dataset_name = opt$dataset,
       ilp_config = ilp_config,
       change_percent = opt$change_percent,
-      output_base = opt$output
+      output_base = opt$output,
+      PreprocessingNetwork = opt$preprocessing
     )
     
     cat("\nILP optimization completed successfully!\n")

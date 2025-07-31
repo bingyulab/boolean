@@ -1,10 +1,8 @@
 import pyboolnet.file_exchange as FileExchange
 import pyboolnet.interaction_graphs as IG
 import pyboolnet.attractors as Attractors
+import pyboolnet.basins_of_attraction as Basins
 import pyboolnet.state_transition_graphs as STGs
-from pyboolnet.repository import get_primes
-from pyboolnet.file_exchange import bnet2primes
-from pyboolnet.prime_implicants import create_variables
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import jaccard, hamming
@@ -13,9 +11,6 @@ from sklearn.metrics import adjusted_rand_score
 from itertools import combinations
 import warnings
 from rpy2.robjects.vectors import FloatVector
-import logging
-# this will suppress all INFO (and DEBUG) messages from every logger
-logging.disable(logging.INFO)
 
 
 def limit_float(x, nbit=2):
@@ -52,36 +47,50 @@ class AttractorAnalysis:
         return FileExchange.bnet2primes(bnet_file)
 
     @staticmethod
-    def compute_attractors(primes):
-        return Attractors.compute_attractors(primes, "synchronous")
+    def compute_attractors(primes):       
+        import logging 
+        logging.disable(logging.INFO)
+        result = Attractors.compute_attractors(primes, "synchronous") 
+        logging.disable(logging.NOTSET)
+        return result
 
     def get_attractors(self, bnet_file):
         primes = AttractorAnalysis.load_bnet(bnet_file)
         attrs = AttractorAnalysis.compute_attractors(primes)
-        return [x['state'] for x in attrs['attractors']]
-             
-    def compare_attractors(self, ori_attrs, comp_attrs):
-        comparator = AttractorComparison(ori_attrs, comp_attrs)
+        return primes, [x['state'] for x in attrs['attractors']]
+    
+    @staticmethod
+    def get_basin_sizes(primes, state):         
+        import logging 
+        logging.disable(logging.INFO)
+        weak = Basins.weak_basin(primes, "asynchronous", state)
+        logging.disable(logging.NOTSET)
+        return weak.get('perc', 0.0)
+    
+    def compare_attractors(self, ori_primes, ori_attrs, com_primes, comp_attrs):
+        comparator = AttractorComparison(ori_primes, ori_attrs, com_primes, comp_attrs)
         results = comparator.comprehensive_comparison()
         return results
     
-    def compare_multiple_attractors(self, ori_attrs, comp_attrs):
+    def compare_multiple_attractors(self, ori_primes, ori_attrs, com_primes, comp_attrs):
         results = []
         for i, reconstructed_attractors in enumerate(comp_attrs):
-            comparator = AttractorComparison(ori_attrs, reconstructed_attractors)
+            comparator = AttractorComparison(ori_primes, ori_attrs, com_primes[i], reconstructed_attractors)
             comparison_result = comparator.comprehensive_comparison()
             comparison_result['reconstruction_id'] = i
             results.append(comparison_result)                    
         return results
     
     def comparison(self):
-        ori_attrs = self.get_attractors(self.ori_bnet)
+        ori_primes, ori_attrs = self.get_attractors(self.ori_bnet)
         if isinstance(self.compared_bnet, str):
-            comp_attrs = self.get_attractors(self.compared_bnet)
-            results = self.compare_attractors(ori_attrs, comp_attrs)
+            comp_primes, comp_attrs = self.get_attractors(self.compared_bnet)
+            results = self.compare_attractors(ori_primes, ori_attrs, comp_primes, comp_attrs)
         else:
-            comp_attrs = [self.get_attractors(bnet) for bnet in self.compared_bnet]
-            results = self.compare_multiple_attractors(ori_attrs, comp_attrs)
+            tmp_res = [self.get_attractors(bnet) for bnet in self.compared_bnet]
+            com_primes = [x[0] for x in tmp_res]
+            comp_attrs = [x[1] for x in tmp_res]
+            results = self.compare_multiple_attractors(ori_primes, ori_attrs, com_primes, comp_attrs)
         return results
         
 
@@ -90,32 +99,34 @@ class AttractorComparison:
     A comprehensive toolkit for comparing attractors from different network models,
     handling variable network sizes and attractor counts.
     """
-    
-    def __init__(self, original_attractors, reconstructed_attractors, threshold=0.9):
-        """
-        Initialize the comparison with original and reconstructed attractors.
+
+    def __init__(self, ori_primes, original_attractors, recon_primes, reconstructed_attractors, threshold=0.9):
+        self.ori_primes = ori_primes
+        self.com_primes = recon_primes
         
-        Parameters:
-        -----------
-        original_attractors : list of dict
-            Original network attractors with 'dict' containing node states
-        reconstructed_attractors : list of dict
-            Reconstructed network attractors with 'dict' containing node states
-        """
         self.original_attractors = original_attractors
         self.reconstructed_attractors = reconstructed_attractors
         self.threshold = threshold
 
-        # Identify common nodes and project
+        # Identify common nodes and project                
         self.common_nodes = self._find_common_nodes()
-        self.original_projected = self._project_attractors(self.original_attractors)
-        self.reconstructed_projected = self._project_attractors(self.reconstructed_attractors)
+        # Build union of all nodes from both networks
+        ori_nodes = set(self.original_attractors[0]['dict'].keys())
+        recon_nodes = set(self.reconstructed_attractors[0]['dict'].keys())
+        self.all_nodes = sorted(list(ori_nodes.union(recon_nodes)))
+    
+        self.orig_vecs, self.pres_ori = self._build_matrices(self.original_attractors)
+        self.recon_vecs, self.pres_recon = self._build_matrices(self.reconstructed_attractors)
 
-        # Build binary matrices
-        self.orig_vecs = self._to_matrix(self.original_projected)
-        self.recon_vecs = self._to_matrix(self.reconstructed_projected)
+        self.ori_basin_sizes = self._compute_basin_sizes(self.ori_primes, self.original_attractors)
+        self.recon_basin_sizes = self._compute_basin_sizes(self.com_primes, self.reconstructed_attractors)
+        
+        b_ori_norm = self.ori_basin_sizes / (self.ori_basin_sizes.sum() or 1)
+        b_recon_norm = self.recon_basin_sizes / (self.recon_basin_sizes.sum() or 1)
+        # Geometric mean weights
+        self.W = np.sqrt(b_ori_norm.reshape(-1, 1) * b_recon_norm.reshape(1, -1))                           # shape (n,m)
 
-        # Precompute similarity matrix & matching
+        # Precompute enhanced similarity matrix & matching
         self._compute_matching()
         
     def _find_common_nodes(self):
@@ -125,92 +136,100 @@ class AttractorComparison:
         
         orig_nodes = set(self.original_attractors[0]['dict'].keys())
         recon_nodes = set(self.reconstructed_attractors[0]['dict'].keys())
-        return orig_nodes.intersection(recon_nodes)
+        return orig_nodes.intersection(recon_nodes)    
     
-    def _project_attractors(self, attractors):
-        """Project attractors to common node space."""
-        projected = []
-        for attractor in attractors:
-            projected_state = {node: attractor['dict'][node] 
-                             for node in self.common_nodes 
-                             if node in attractor['dict']}
-            projected.append(projected_state)
-        return projected
+    def _build_matrices(self, attractors):
+        """
+        For each attractor, build:
+          - vec: boolean vector over all_nodes (True if node=1)
+          - pres: boolean mask (True if node is defined in the attractor)
+        """
+        vecs = []
+        pres = []
+        for att in attractors:
+            d = att['dict']
+            vecs.append([bool(d.get(node, False)) for node in self.all_nodes])
+            pres.append([node in d for node in self.all_nodes])
+        return np.array(vecs, dtype=bool), np.array(pres, dtype=bool)
     
-    def _to_matrix(self, proj):
-        if not proj or not self.common_nodes:
-            return np.zeros((0, 0), dtype=bool)
-        mat = np.array([[att[n] for n in self.common_nodes] for att in proj], dtype=bool)
-        return mat
-    
+    def _compute_basin_sizes(self, primes, attractors):
+        weight = [AttractorAnalysis.get_basin_sizes(primes, att['str']) for att in attractors]
+        return np.array(weight)
+
     def _compute_matching(self):
         n, m = len(self.orig_vecs), len(self.recon_vecs)
         if n == 0 or m == 0:
             self.match_sims = []
             return
         
-        orig_matrix = self.orig_vecs.astype(int)  # Convert bool to int for arithmetic
-        recon_matrix = self.recon_vecs.astype(int)
-        
-        # Compute intersection and union matrices all at once
-        # This is the vectorized equivalent of your nested loop
-        intersection = np.dot(orig_matrix, recon_matrix.T)  # Matrix multiplication gives intersections
+        # Compute masked Jaccard for each pair
+        sim_matrix = np.zeros((n, m), dtype=float)
+        for i in range(n):
+            for j in range(m):
+                mask = self.pres_ori[i] & self.pres_recon[j]
+                if not mask.any():
+                    sim_matrix[i, j] = 0.0
+                else:
+                    a = self.orig_vecs[i]
+                    b = self.recon_vecs[j]
+                    inter = np.sum((a & b) & mask)
+                    uni   = np.sum((a | b) & mask)
+                    sim_matrix[i, j] = inter / uni if uni > 0 else 0.0
 
-        # Calculate unions: |A| + |B| - |A ∩ B|
-        orig_sums = np.sum(orig_matrix, axis=1, keepdims=True)  # Sum of each original vector
-        recon_sums = np.sum(recon_matrix, axis=1)  # Sum of each reconstructed vector
-        union = orig_sums + recon_sums - intersection
-
-        # Jaccard similarities (handle division by zero)
-        similarities = np.divide(intersection, union, 
-                        out=np.zeros_like(intersection, dtype=float), 
-                        where=union!=0)
         # Hungarian assignment
-        cost = -similarities
+        cost = -(self.W * sim_matrix)
         row, col = linear_sum_assignment(cost)
         pairs = [(i, j) for i, j in zip(row, col) if i < n and j < m]
-        self.match_sims = [similarities[i, j] for i, j in pairs]
-        
+        self.match_sims = [sim_matrix[i, j] for i, j in pairs]
+
     def compute_global_jaccard(self):
         # larger values indeed mean better matches
-        return limit_float(np.mean(self.match_sims) if self.match_sims else 0.0)
+        return limit_float(np.mean(self.match_sims)  if self.match_sims else 0.0)
 
     def compute_global_hamming(self):
         """Mean Hamming similarity over optimal one-to-one matching."""
-        # smaller values indicate better matches
+        # Larger values indicate better matches
         # Recompute with hamming if needed
         n, m = len(self.orig_vecs), len(self.recon_vecs)
         if len(self.orig_vecs) == 0 or len(self.recon_vecs) == 0:
-            return 0.0
+            return 0.0        
         
-        # Convert to numpy arrays for efficient computation
-        orig_matrix = self.orig_vecs.astype(int)  # Convert bool to int for arithmetic
-        recon_matrix = self.recon_vecs.astype(int)
-        
-        # Compute intersection and union matrices all at once
-        # This is the vectorized equivalent of your nested loop
-        intersection = np.dot(orig_matrix, recon_matrix.T)  # Matrix multiplication gives intersections
-        
-        # \sum_k \mathbf{1}\{a_k \neq b_k\} \;=\;\bigl(\text{#1’s in }a\text{ but not }b\bigr) \;+\;\bigl(\text{#1’s in }b\text{ but not }a\bigr) \;=\;\bigl(\sum a_k - \sum (a_k b_k)\bigr) \;+\;\bigl(\sum b_k - \sum(a_k b_k)\bigr) \;=\;\sum(a) + \sum(b) \;-\;2\,\mathrm{inter}(a,b).
-        orig_sums = np.sum(orig_matrix, axis=1, keepdims=True)  # Sum of each original vector
-        recon_sums = np.sum(recon_matrix, axis=1)  # Sum of each reconstructed vector
-        hamming_distances = orig_sums + recon_sums - 2 * intersection
-        
+        # Compute masked Hamming for each pair
+        # D_{ij} = sum_k |a_i[k] - b_j[k]| over only coords where both define the node.    
+        dist_matrix = np.zeros((n, m), dtype=float)
+        for i in range(n):
+            for j in range(m):
+                mask = self.pres_ori[i] & self.pres_recon[j]
+                if not mask.any():
+                    dist_matrix[i, j] = 0.0
+                else:
+                    a = self.orig_vecs[i, mask].astype(int)
+                    b = self.recon_vecs[j, mask].astype(int)
+                    # Hamming distance = sum of mismatches
+                    dist_matrix[i, j] = np.sum(np.abs(a - b))
+                
         # For Hungarian algorithm, we use distances directly as costs
         # (no need to negate since we want minimum distance)
-        row, col = linear_sum_assignment(hamming_distances)
+        row, col = linear_sum_assignment(self.W * dist_matrix)
         
         # Extract the matched similarities
-        match_sims = [hamming_distances[i, j] for i, j in zip(row, col)
+        match_sims = [dist_matrix[i, j] for i, j in zip(row, col)
                       if i < len(self.orig_vecs) and j < len(self.recon_vecs)]
         
         if not match_sims:
             return 0.0
 
-        # Convert mean Hamming distance to similarity on [0,1]
-        vector_length = orig_matrix.shape[1]
-        mean_distance = np.mean(match_sims)
-        similarity = 1.0 - (mean_distance / vector_length)
+        # Convert mean Hamming distance back into similarity [0,1]:
+        # max distance per pair = #masked_coords, but these vary per pair.
+        # We approximate by dividing by the average masked-length:
+        lengths = []
+        for i, j in zip(row, col):
+            mask = self.pres_ori[i] & self.pres_recon[j]
+            lengths.append(np.sum(mask))
+        avg_length = np.mean(lengths) if lengths else 1.0
+
+        mean_dist = np.mean(match_sims)
+        similarity = 1.0 - (mean_dist / avg_length)
         return limit_float(similarity)
 
     def compute_coverage(self):
@@ -218,46 +237,17 @@ class AttractorComparison:
         Decoupled precision/recall with threshold.
         """
         tp = sum(1 for sim in self.match_sims if sim >= self.threshold)
-        prec = tp / len(self.reconstructed_projected) if self.reconstructed_projected else 0.0
-        rec  = tp / len(self.original_projected)  if self.original_projected  else 0.0
+        prec = tp / len(self.reconstructed_attractors) if self.reconstructed_attractors else 0.0
+        rec  = tp / len(self.original_attractors)  if self.original_attractors  else 0.0
         f1   = (2*prec*rec/(prec+rec)) if (prec+rec)>0 else 0.0
         return {
             'precision': limit_float(prec),
             'recall':    limit_float(rec),
             'f1_score':  limit_float(f1),
             'true_positives': tp,
-            'orig_total': len(self.original_projected),
-            'recon_total': len(self.reconstructed_projected)
-        }
-        
-    def compute_coverage_metrics(self):
-        """
-        Compute coverage metrics for attractor comparison.
-        
-        Returns:
-        --------
-        dict : Coverage metrics including precision, recall, and F1-score
-        """
-        if not self.common_nodes:
-            return {'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0}
-        
-        orig_set = {self._dict_to_tuple(att) for att in self.original_projected}
-        recon_set = {self._dict_to_tuple(att) for att in self.reconstructed_projected}
-        
-        intersection = orig_set.intersection(recon_set)
-        
-        precision = len(intersection) / len(recon_set) if recon_set else 0.0
-        recall = len(intersection) / len(orig_set) if orig_set else 0.0
-        f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-        
-        return {
-            'precision': limit_float(precision),
-            'recall': limit_float(recall),
-            'f1_score': limit_float(f1_score),
-            'exact_matches': len(intersection),
-            'total_original': len(orig_set),
-            'total_reconstructed': len(recon_set)
-        }
+            'orig_total': len(self.original_attractors),
+            'recon_total': len(self.reconstructed_attractors)
+        }        
         
     def comprehensive_comparison(self, Return_DF=True):
         """
@@ -268,16 +258,10 @@ class AttractorComparison:
         dict : Comprehensive comparison results
         """
         results = {
-            'common_nodes': len(self.common_nodes),
-            # 'common_node_list': sorted(list(self.common_nodes)),
-            # 'jaccard_similarity': limit_float(self.compute_jaccard_similarity()),
-            # 'hamming_similarity': limit_float(self.compute_hamming_similarity()),
-            # 'coverage_metrics': self.compute_coverage_metrics(),            
+            'common_nodes': len(self.common_nodes),   
             'jaccard_similarity': self.compute_global_jaccard(),
             'hamming_similarity': self.compute_global_hamming(),
-            'coverage_metrics': self.compute_coverage(),
-            # 'basin_stability': self.compute_basin_stability_comparison(),
-            # 'functional_similarity': self.compute_functional_similarity()
+            'coverage_metrics': self.compute_coverage(),     
         }
         
         # Compute composite score
@@ -345,112 +329,11 @@ class AttractorComparison:
             activity[node] = np.mean([att.get(node, 0) for att in attractors])
         return activity
 
-
-# Example usage and demonstration
-def demonstrate_attractor_comparison():
-    """Demonstrate the attractor comparison functionality."""
     
-    # Example original attractors (from your data)
-    original_attractors = [
-        {'dict': {'Akt': 0, 'EGF': 0, 'Erk': 1, 'Hsp27': 1, 'Jnk': 0, 'Mek': 1, 
-                 'NFkB': 0, 'PI3K': 0, 'Raf': 0, 'TNFa': 0, 'cJun': 0, 'p90RSK': 1}},
-        {'dict': {'Akt': 1, 'EGF': 0, 'Erk': 0, 'Hsp27': 1, 'Jnk': 1, 'Mek': 0, 
-                 'NFkB': 1, 'PI3K': 1, 'Raf': 0, 'TNFa': 1, 'cJun': 1, 'p90RSK': 0}},
-        {'dict': {'Akt': 1, 'EGF': 1, 'Erk': 1, 'Hsp27': 1, 'Jnk': 0, 'Mek': 1, 
-                 'NFkB': 0, 'PI3K': 1, 'Raf': 1, 'TNFa': 0, 'cJun': 0, 'p90RSK': 1}},
-        {'dict': {'Akt': 1, 'EGF': 1, 'Erk': 1, 'Hsp27': 1, 'Jnk': 1, 'Mek': 1, 
-                 'NFkB': 1, 'PI3K': 1, 'Raf': 1, 'TNFa': 1, 'cJun': 1, 'p90RSK': 1}}
-    ]
     
-    # Example reconstructed attractors (smaller network, different count)
-    reconstructed_attractors = [
-        {'dict': {'Akt': 1, 'EGF': 1, 'Erk': 1, 'Hsp27': 1, 'Mek': 1, 'p90RSK': 1}},
-        {'dict': {'Akt': 0, 'EGF': 0, 'Erk': 0, 'Hsp27': 0, 'Mek': 0, 'p90RSK': 0}},
-        {'dict': {'Akt': 1, 'EGF': 0, 'Erk': 1, 'Hsp27': 1, 'Mek': 1, 'p90RSK': 1}}
-    ]
-    
-    # Perform comparison
-    comparator = AttractorComparison(original_attractors, reconstructed_attractors)
-    results = comparator.comprehensive_comparison()
-    
-    # Display results
-    print("Attractor Comparison Results:")
-    print(f"Common nodes: {results['common_nodes']}")
-    # print(f"Common node list: {results['common_node_list']}")
-    print(f"Jaccard similarity: {results['jaccard_similarity'].iloc[0]:.3f}")
-    print(f"Hamming similarity: {results['hamming_similarity'].iloc[0]:.3f}")
-    print(f"Coverage F1-score: {results['coverage_metrics'].iloc[0]['f1_score']:.3f}")
-    # print(f"Functional similarity: {results['functional_similarity']['functional_similarity']:.3f}")
-    print(f"Composite score: {results['composite_score'].iloc[0]:.3f}")
-    
-    return results
-
-# Utility functions for batch processing
-def compare_multiple_reconstructions(original_attractors, reconstruction_list):
-    """
-    Compare original attractors with multiple reconstructions.
-    
-    Parameters:
-    -----------
-    original_attractors : list of dict
-        Original network attractors
-    reconstruction_list : list of list of dict
-        List of reconstructed attractor sets
-    
-    Returns:
-    --------
-    list : Comparison results for each reconstruction
-    """
-    results = []
-    for i, reconstructed_attractors in enumerate(reconstruction_list):
-        comparator = AttractorComparison(original_attractors, reconstructed_attractors)
-        comparison_result = comparator.comprehensive_comparison()
-        comparison_result['reconstruction_id'] = i
-        results.append(comparison_result)
-    
-    return results
-
-def create_comparison_summary(comparison_results):
-    """
-    Create summary statistics from multiple comparisons.
-    
-    Parameters:
-    -----------
-    comparison_results : list of dict
-        Results from multiple attractor comparisons
-    
-    Returns:
-    --------
-    dict : Summary statistics
-    """
-    if not comparison_results:
-        return {}
-    
-    metrics = ['jaccard_similarity', 'hamming_similarity', 'composite_score']
-    summary = {}
-    
-    for metric in metrics:
-        values = [result[metric] for result in comparison_results]
-        summary[metric] = {
-            'mean': np.mean(values),
-            'std': np.std(values),
-            'min': np.min(values),
-            'max': np.max(values),
-            'median': np.median(values)
-        }
-    
-    # Coverage metrics summary
-    f1_scores = [result['coverage_metrics']['f1_score'] for result in comparison_results]
-    summary['coverage_f1'] = {
-        'mean': np.mean(f1_scores),
-        'std': np.std(f1_scores),
-        'min': np.min(f1_scores),
-        'max': np.max(f1_scores),
-        'median': np.median(f1_scores)
-    }
-    
-    return summary
-
 if __name__ == "__main__":
-    # Run demonstration
-    demonstrate_attractor_comparison()
+    ori_primes = "data/ToyModel/ToyModel.bnet"
+    compared_bnet = "data/ToyModel/ToyModel.bnet"
+    analysis = AttractorAnalysis(ori_primes, compared_bnet)
+    results = analysis.comparison()
+    print(results)
