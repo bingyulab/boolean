@@ -239,7 +239,7 @@ class AttractorComparison:
         tp = sum(1 for sim in self.match_sims if sim >= self.threshold)
         prec = tp / len(self.reconstructed_attractors) if self.reconstructed_attractors else 0.0
         rec  = tp / len(self.original_attractors)  if self.original_attractors  else 0.0
-        f1   = (2*prec*rec/(prec+rec)) if (prec+rec)>0 else 0.0
+        f1   = (2 * prec * rec / (prec + rec)) if (prec + rec) > 0 else 0.0
         return {
             'precision': limit_float(prec),
             'recall':    limit_float(rec),

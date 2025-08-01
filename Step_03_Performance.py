@@ -270,8 +270,7 @@ class OptimizedNetworkRunner:
     def _evaluate_optimization_results(self, task_config: TaskConfig, output_path: str) -> Optional[Dict[str, Any]]:
         """Evaluate optimization results using attractor analysis."""
         try:
-            dataset_name = dataset_map[task_config.dataset][0]
-            _, sif_name, _, _, bnet_name, _ = dataset_map[task_config.dataset]
+            dataset_name, sif_name, _, _, bnet_name, _ = dataset_map[task_config.dataset]
             
             # Paths for evaluation
             opt_bnet = os.path.join(output_path, f"OPT_{dataset_name}.bnet")

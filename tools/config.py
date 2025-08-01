@@ -91,11 +91,11 @@ class AdaptiveParameterManager:
             "change_percent": self.change_percent,
             'threads': max(1, int(base_threads * self.exploration_multiplier)),  # Use multiple threads for efficiency
             'conf': 'many',  # Standard configuration
-            'fit': self.change_percent * 0.05 * self.tolerance_multiplier,  # tolerance over fitness (Default to 0)
-            'size': int(self.change_percent * 2.5 * (1.0 / self.size_factor_multiplier)),  # tolerance over size (Default to 0)
-            'factor': max(50, int(base_factor * self.exploration_multiplier)),  # discretization range [0, factor]
+            'fit': 0.04,  # tolerance over fitness (Default to 0)
+            'size': 0,  # tolerance over size (Default to 0)
+            'factor': 100,  # discretization range [0, factor]
             'discretization': 'round',  # discretization function: round, floor, ceil (Default to round)
-            'length': self._calculate_caspo_length(),  # max conjunction length (0 = unbounded)
+            'length': 0,  # max conjunction length (0 = unbounded)
         }
 
         return config
@@ -130,8 +130,8 @@ class AdaptiveParameterManager:
         - Adjust termination criteria to allow more thorough search
         - Configure local search parameters for robustness
         """
-        base_maxeval = 5000
-        base_maxtime = 120
+        base_maxeval = 1000
+        base_maxtime = 60
         
         config = {
             "change_percent": self.change_percent,
@@ -168,7 +168,7 @@ class AdaptiveParameterManager:
             'elitism': None,  # number of elites (None = popSize//10)
             
             # Objective function parameters - critical for network size control
-            'sizeFac': self.config.base_size_factor * self.size_factor_multiplier, # penalty weight for network size
+            'sizeFac': self.config.base_size_factor, # penalty weight for network size
             'NAFac': 1.0,  # penalty for unresolved states
             
             # Termination and search parameters
@@ -195,17 +195,18 @@ class AdaptiveParameterManager:
         - Modify gap parameters for solution quality vs. speed trade-off
         - Configure solution diversity parameters
         """
-        num_solutions = 10
+        num_solutions = 3
         based_time_limit = 3600  # Base time limit in seconds
         based_pop_size = 500
+        
         config = {
             # Model size control - most important parameter
             'accountForModelSize': "TRUE",  # include size in objective
-            'sizeFac': self.config.base_size_factor * self.size_factor_multiplier, # penalty weight for size
-            
+            'sizeFac': self.config.base_size_factor, # penalty weight for size
+
             # Solution quality parameters
             'mipGap': 0,  # absolute MIP gap tolerance, Exact solutions preferred
-            'relGap': min(0.1, 0.05 * self.tolerance_multiplier),  # relative gap tolerance, Increase tolerance for higher perturbation
+            'relGap': 0.05,  # relative gap tolerance, Increase tolerance for higher perturbation
             
             # Computational parameters
             'timelimit': max(based_time_limit, int(based_time_limit * self.exploration_multiplier)),

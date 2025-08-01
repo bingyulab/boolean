@@ -191,15 +191,14 @@ class CaspoOptimizer:
         learner = learn.Learner(
             zipped, dataset, self.config['length'], 
             self.config['discretization'], self.config['factor'])
-        total_time = time.time() - start_time
         print("Number of hyperedges (possible logical mappings) derived from the compressed PKN: %d" % len(learner.hypergraph.hyper))
-
         # if self.optimum:
         #     learner.optimum = core.LogicalNetworkList.from_csv(self.optimum)[0]
 
         configure = ft.partial(configure_mt, self.config) if self.config['threads'] else None
         learner.learn(self.config['fit'], self.config['size'], configure)
 
+        total_time = time.time() - start_time
         print("Weighted MSE: %.4f" % learner.networks.weighted_mse(dataset))
 
         self.save_stats(learner, dataset)

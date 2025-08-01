@@ -1,6 +1,6 @@
 # Introduction
 
-All expected functions have been successfully implemented and tested(around 40 min for 10 times), making the codebase ready for further testing and practical usage. However, a significant challenge emerged in the comparison methodology, particularly evident in robustness analysis where perturbed networks paradoxically showed higher evaluation scores than the original networks.
+All expected functions have been successfully implemented and tested(around 1h for 10 times), making the codebase ready for further testing and practical usage. However, a significant challenge emerged in the comparison methodology, particularly evident in robustness analysis where perturbed networks paradoxically showed higher evaluation scores than the original networks.
 
 This counterintuitive result stems from fundamental issues in attractor comparison when dealing with networks of varying sizes and differing attractor counts. When PKN are perturbed, they often generate substantially more attractors than the original network, creating an unfair advantage in similarity calculations through what amounts to a "statistical lottery" effect.
 
@@ -30,6 +30,8 @@ The robustness analysis reveals that `VNS` (Variable Neighborhood Search) and `G
 ![Toy](../output/toy/runtime_comparison.png)
 ![Dream](../output/dream/runtime_comparison.png)
 The runtime comparison demonstrates the expected trade-off between solution quality and computational efficiency. `VNS` and `GA` require substantially more computational resources, reflecting their exhaustive search strategies. In contrast, `CASPO` and `ILP` methods achieve faster execution times through more targeted optimization approaches. Interestingly, runtime performance remains relatively consistent across different network configurations for each method.
+
+Problem: `Caspo` has very short running time. Some place goes wrong. I will check it later.
 
 ### 5. Comparison with different network sizes
 Composition score comparison:
@@ -63,8 +65,13 @@ The first month has produced several concrete outcomes. I have thoroughly review
 ### Future Development Priorities
 Several important tasks remain for complete project maturation. Cross-validation implementation will provide more robust performance assessment across different network types and sizes. Additional testing phases will ensure code reliability and identify edge cases that require special handling.
 
+- Check `Caspo` running time, it is too short.
+- Check parallelization issues, sometimes some tasks does not return results.
+
 ## Discussion and Questions
 
 1. **Internship Timeline**: Could you confirm the second internship period timing of August 18 through September 12 (four weeks)? First internship is five weeks.
 2. **Performance Evaluation**: I would greatly appreciate feedback on my performance during this internship period. Are there specific areas where I could improve my approach or focus my development efforts?
 3. **Research Direction**: Given the comparative results we've obtained, what aspects of this analysis would be most valuable to explore further in the continuing work?
+
+

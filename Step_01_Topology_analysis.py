@@ -411,9 +411,11 @@ if __name__ == "__main__":
     
     print("\n=== Reading from SIF Files ===")
     # Test reading from SIF files
-    sif_net1 = BooleanNetworkGraph.read_sif('data/ToyModel/ToyModel.sif')
-    sif_net2 = BooleanNetworkGraph.read_sif('data/ToyModel/10_Modified/ToyModel.sif')
-    
+    # sif_net1 = BooleanNetworkGraph.read_sif('data/ToyModel/ToyModel.sif')
+    # sif_net2 = BooleanNetworkGraph.read_sif('data/ToyModel/10_Modified/ToyModel.sif')
+    sif_net1 = BooleanNetworkGraph.read_sif('data/DREAMmodel/DreamModel.sif')
+    # sif_net2 = BooleanNetworkGraph.read_sif('data/DREAMmodel/30_Modified/DreamModel.sif')
+    sif_net2 = BooleanNetworkGraph.read_sif('output/cellnopt/DREAMmodel/20_Modified/ga/OPT_DREAMmodel.sif')
     print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
     print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
     
