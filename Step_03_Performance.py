@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import glob
 import shutil
 import argparse
@@ -9,30 +8,17 @@ import subprocess
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Optional
 import time
-import json
 from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from functools import partial
-import logging
-    
-# Configure logging
-logger = logging.getLogger("network_analysis")
-logger.setLevel(logging.INFO)
-fh = logging.FileHandler('network_analysis.log')
-fh.setLevel(logging.INFO)
-fh.setFormatter(logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(message)s'
-))
-logger.addHandler(fh)
-
-# Import your existing modules
+from tools.functions import setup_logger
 from tools.caspoTest import CaspoOptimizer
 from tools.config import dataset_map, create_experiment_configs, NetworkPerturbationConfig, AdaptiveParameterManager
 from tools.comparison import limit_float, AttractorAnalysis
 from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
+logger = setup_logger()
 
 @dataclass
 class TaskConfig:
@@ -396,7 +382,9 @@ def create_task_configs(dataset: str, interval: int, iteration: int,
                 method_config = manager.get_caspo_config()
             else:
                 continue
-                
+            
+            logger.info(method_config)
+            
             task = TaskConfig(
                 dataset=dataset,
                 method=method,

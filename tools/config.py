@@ -1,7 +1,6 @@
-import numpy as np
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
-import json, os
+from typing import Dict, Any
+import json, os, sys
 
 
 dataset_map = {
@@ -89,7 +88,7 @@ class AdaptiveParameterManager:
         
         config = {
             "change_percent": self.change_percent,
-            'threads': max(1, int(base_threads * self.exploration_multiplier)),  # Use multiple threads for efficiency
+            'threads': 1,  # Use multiple threads for efficiency
             'conf': 'many',  # Standard configuration
             'fit': 0.04,  # tolerance over fitness (Default to 0)
             'size': 0,  # tolerance over size (Default to 0)
@@ -199,6 +198,13 @@ class AdaptiveParameterManager:
         based_time_limit = 3600  # Base time limit in seconds
         based_pop_size = 500
         
+        if sys.platform.startswith("darwin"):
+            cplex_path = "~/CPLEX_Studio2211/cplex/bin/x86-64_osx/cplex"
+        elif sys.platform.startswith("linux"):
+            cplex_path = "~/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex"
+        else:
+            cplex_path = "~/CPLEX_Studio2211/cplex/bin/x86-64_windows/cplex"
+
         config = {
             # Model size control - most important parameter
             'accountForModelSize': "TRUE",  # include size in objective
@@ -210,7 +216,8 @@ class AdaptiveParameterManager:
             
             # Computational parameters
             'timelimit': max(based_time_limit, int(based_time_limit * self.exploration_multiplier)),
-            'cplexPath': os.path.expanduser("~/CPLEX_Studio2211/cplex/bin/x86-64_linux/cplex"),
+
+            'cplexPath': os.path.expanduser(cplex_path),
             'method': 'quadratic',  # Standard method
             
             # Solution diversity parameters
@@ -233,7 +240,7 @@ class AdaptiveParameterManager:
             'caspo': self.get_caspo_config(),
             'vns': self.get_vns_config(),
             'ga': self.get_ga_config(),
-            'ilp': self.get_ilp_config(cplex_path, num_solutions)
+            'ilp': self.get_ilp_config()
         }
     
     def save_config(self, filepath: str):
@@ -246,7 +253,7 @@ class AdaptiveParameterManager:
                 'tolerance_multiplier': self.tolerance_multiplier,
                 'population_multiplier': self.population_multiplier,
             },
-            'configurations': self.get_all_configs(cplex_path, num_solutions)
+            'configurations': self.get_all_configs()
         }
         
         with open(filepath, 'w') as f:
@@ -326,7 +333,7 @@ def demonstrate_usage():
         manager = experiment_configs[perturbation_level]
         
         # Get configurations for all methods
-        all_configs = manager.get_all_configs(cplex_path="/path/to/cplex")
+        all_configs = manager.get_all_configs()
         
         # Show how you would use these in your code
         print(f"  VNS maxeval: {all_configs['vns']['maxeval']}")

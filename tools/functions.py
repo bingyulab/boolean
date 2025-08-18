@@ -6,7 +6,53 @@ from rpy2.robjects.conversion import localconverter
 
 from collections import defaultdict
 import re
+import logging
 
+def setup_logger(name="network_analysis", log_file="network_analysis.log", level=logging.INFO):
+    """Setup logger with file and console handlers, preventing duplicates."""
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    
+    # If logger already has handlers, don't add more (prevents duplicates on re-runs)
+    if logger.handlers:
+        return logger
+    
+    class ColoredFormatter(logging.Formatter):
+        RESET = "\033[0m"
+        COLORS = {
+            logging.DEBUG: "\033[36m",     # Cyan
+            logging.INFO: "\033[32m",      # Green
+            logging.WARNING: "\033[33m",   # Yellow
+            logging.ERROR: "\033[31m",     # Red
+            logging.CRITICAL: "\033[41m",  # Red background
+        }
+        
+        def format(self, record):
+            msg = super().format(record)
+            color = self.COLORS.get(record.levelno, "")
+            return f"{color}{msg}{self.RESET}" if color else msg
+    
+    # Create formatters
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # File handler
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(level)
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(console_formatter)
+    logger.addHandler(console_handler)
+    
+    # Prevent propagation to root logger (avoids duplicate messages)
+    logger.propagate = False
+    
+    return logger
 
 def parse_namedlist_to_dataframes(named_list):
     """
@@ -36,10 +82,6 @@ def parse_namedlist_to_dataframes(named_list):
                 print(f"Index: {list(df.index)}")
         except Exception as e:
             print(f"Conversion failed for {name}: {e}")
-            # Try manual conversion
-            df = manual_convert_r_dataframe(r_dataframe)
-            results[name] = df
-            print(f"Manual conversion successful for {name}")
     
     return results
 

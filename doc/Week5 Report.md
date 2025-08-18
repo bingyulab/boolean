@@ -31,8 +31,6 @@ The robustness analysis reveals that `VNS` (Variable Neighborhood Search) and `G
 ![Dream](../output/dream/runtime_comparison.png)
 The runtime comparison demonstrates the expected trade-off between solution quality and computational efficiency. `VNS` and `GA` require substantially more computational resources, reflecting their exhaustive search strategies. In contrast, `CASPO` and `ILP` methods achieve faster execution times through more targeted optimization approaches. Interestingly, runtime performance remains relatively consistent across different network configurations for each method.
 
-Problem: `Caspo` has very short running time. Some place goes wrong. I will check it later.
-
 ### 5. Comparison with different network sizes
 Composition score comparison:
 ![composite_score](../output/dream/size_comparison_composite_score.png)
@@ -66,12 +64,10 @@ The first month has produced several concrete outcomes. I have thoroughly review
 Several important tasks remain for complete project maturation. Cross-validation implementation will provide more robust performance assessment across different network types and sizes. Additional testing phases will ensure code reliability and identify edge cases that require special handling.
 
 - Check `Caspo` running time, it is too short.
-- Check parallelization issues, sometimes some tasks does not return results.
+- Check parallelization issues, sometimes some tasks does not return result.
 
 ## Discussion and Questions
 
 1. **Internship Timeline**: Could you confirm the second internship period timing of August 18 through September 12 (four weeks)? First internship is five weeks.
 2. **Performance Evaluation**: I would greatly appreciate feedback on my performance during this internship period. Are there specific areas where I could improve my approach or focus my development efforts?
 3. **Research Direction**: Given the comparative results we've obtained, what aspects of this analysis would be most valuable to explore further in the continuing work?
-
-

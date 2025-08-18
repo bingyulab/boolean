@@ -33,9 +33,9 @@ deactivate
 ## Installation
 Please follow the instructions in the [installation.md](doc/installation.md) file for installation.
 ```bash
-pip install -r requirements.txt
-Rscript Install/install.R
+make install
 ```
+Note: the version of python should be 3.11 or higher and should install `clasp` and `gringo`.
 
 ## Data Preparation
 ```bash

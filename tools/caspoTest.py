@@ -4,7 +4,6 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
 import functools as ft
-import time
 from tools.config import dataset_map
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -159,7 +158,7 @@ class CaspoOptimizer:
         AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
         results = AA.comparison()
         
-        results['total_time']         = limit_float(total_time)
+        results['total_time']         = limit_float(total_time, 4)
         results['method']             = "Caspo"
         results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(self.output_file, "results.csv"), index=False)
@@ -187,7 +186,6 @@ class CaspoOptimizer:
         dataset = core.Dataset(self.midas_file, self.time)
         zipped = graph.compress(dataset.setup)
 
-        start_time = time.time()
         learner = learn.Learner(
             zipped, dataset, self.config['length'], 
             self.config['discretization'], self.config['factor'])
@@ -198,7 +196,7 @@ class CaspoOptimizer:
         configure = ft.partial(configure_mt, self.config) if self.config['threads'] else None
         learner.learn(self.config['fit'], self.config['size'], configure)
 
-        total_time = time.time() - start_time
+        total_time = learner.stats['time_enumeration']
         print("Weighted MSE: %.4f" % learner.networks.weighted_mse(dataset))
 
         self.save_stats(learner, dataset)
