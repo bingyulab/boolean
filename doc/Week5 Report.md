@@ -64,7 +64,10 @@ The first month has produced several concrete outcomes. I have thoroughly review
 Several important tasks remain for complete project maturation. Cross-validation implementation will provide more robust performance assessment across different network types and sizes. Additional testing phases will ensure code reliability and identify edge cases that require special handling.
 
 - Check `Caspo` running time, it is too short.
+    - `Caspo` support parallel execution, modified the code by using its time statistics. Still fast.
 - Check parallelization issues, sometimes some tasks does not return result.
+    - `CPLEX` does not support parallel execution. Modified the code for running `ILP` tasks sequentially.
+    - The process of generating data have conflicts. Add lock mechanism to ensure data consistency.
 
 ## Discussion and Questions
 

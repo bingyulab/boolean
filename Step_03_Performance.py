@@ -10,16 +10,20 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import time
+import threading
 from dataclasses import dataclass
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from tools.functions import setup_logger
 from tools.caspoTest import CaspoOptimizer
 from tools.config import dataset_map, create_experiment_configs, NetworkPerturbationConfig, AdaptiveParameterManager
 from tools.comparison import limit_float, AttractorAnalysis
 from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
+from tools.pertub_helper import PerturbationManager
 
 logger = setup_logger()
 
+# Global lock for ILP tasks - only one ILP can run at a time
+ILP_LOCK = threading.Lock()
 @dataclass
 class TaskConfig:
     """Configuration for a single optimization task."""
@@ -38,14 +42,15 @@ class OptimizedNetworkRunner:
     
     def __init__(self, base_output_dir: str = "output", max_workers: Optional[int] = None):
         self.base_output_dir = Path(base_output_dir)
-        self.max_workers = max_workers or min(os.cpu_count(), 16)  # Reasonable limit
+        self.max_workers = max_workers or min(os.cpu_count(), 16) 
         self.script_paths = {
             'ga': 'tools/ga.R',
             'ilp': 'tools/ilp.R', 
             'vns': 'tools/vns.R',
             'perturbation': 'Step_02_Pertub_model.R'
-        }
-        
+        }                
+        # Thread-safe perturbation manager
+        self.perturbation_manager = PerturbationManager(base_output_dir)
         # Ensure output directory exists
         self.base_output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -75,43 +80,39 @@ class OptimizedNetworkRunner:
                             shutil.rmtree(file_path)
                     except Exception as e:
                         logger.warning(f"Failed to remove {file_path}: {e}")
-                        
+
+            # Also cleanup perturbation locks for this dataset
+            self.perturbation_manager.cleanup_locks(dataset)
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
-    
-    def run_perturbation(self, dataset: str, change_percent: float, seed: int) -> bool:
-        """Run network perturbation as a separate process."""
-        try:
-            logger.info(f"Running perturbation for {dataset}: {change_percent:.1%}, seed={seed}")
-            
-            cmd = [
-                "Rscript", self.script_paths['perturbation'], 
-                "-d", dataset,
-                "-p", str(change_percent),
-                "-s", str(seed)
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout for perturbation
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"Perturbation failed for {dataset} ({change_percent:.1%}): {result.stderr}")
-                return False
-                
-            logger.info(f"Perturbation completed for {dataset} ({change_percent:.1%})")
-            return True
-            
-        except subprocess.TimeoutExpired:
-            logger.error(f"Perturbation timeout for {dataset} ({change_percent:.1%})")
-            return False
-        except Exception as e:
-            logger.error(f"Perturbation error for {dataset} ({change_percent:.1%}): {e}")
-            return False
 
+    def run_perturbation(self, dataset: str, change_percent: float, iteration: int) -> bool:
+        """Run network perturbation as a separate process."""
+        return self.perturbation_manager.run_perturbation_safe(
+            dataset, change_percent, iteration, self.script_paths['perturbation']
+        )
+        
+    def run_ilp_optimization_with_lock(self, task_config: TaskConfig, PreprocessingNetwork: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Run ILP optimization with global lock to ensure only one ILP runs at a time.
+        """
+        logger.info(f"ILP task waiting for lock: {task_config.dataset} "
+                   f"({task_config.change_percent:.1%}, iter {task_config.iteration})")
+        
+        with ILP_LOCK:
+            logger.info(f"ILP task acquired lock: {task_config.dataset} "
+                       f"({task_config.change_percent:.1%}, iter {task_config.iteration})")
+            
+            # Add a small delay to ensure CPLEX is fully released from previous task
+            time.sleep(2)
+            
+            result = self.run_r_optimization(task_config, PreprocessingNetwork)
+            
+            logger.info(f"ILP task releasing lock: {task_config.dataset} "
+                       f"({task_config.change_percent:.1%}, iter {task_config.iteration})")
+            
+            return result
+        
     def run_r_optimization(self, task_config: TaskConfig, PreprocessingNetwork: bool = True) -> Optional[Dict[str, Any]]:
         """
         Run R-based optimization (GA, ILP, VNS) as separate processes.
@@ -175,7 +176,7 @@ class OptimizedNetworkRunner:
                     "-i", str(vns_config['iterprint']),
                     "-P", "TRUE" if PreprocessingNetwork else "FALSE"
                 ])
-            
+                
             # Set timeout based on method
             timeout_map = {'ga': 3600, 'ilp': 7200, 'vns': 3600}
             timeout = timeout_map[method]
@@ -190,7 +191,7 @@ class OptimizedNetworkRunner:
             end_time = time.time()
             
             if result.returncode != 0:
-                logger.error(f"{method.upper()} optimization failed: {result.stderr}")
+                logger.error(f"{method.upper()} optimization failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
                 return None
                 
             # Read results from the output file
@@ -335,19 +336,13 @@ def run_single_task(task_config: TaskConfig, PreprocessingNetwork: bool = True) 
     
     try:
         logger.info(f"Running task: {task_config.dataset} {task_config.method} "
-                   f"{task_config.change_percent:.1%} iter {task_config.iteration}")
-        # First, ensure perturbation is done
-        success = runner.run_perturbation(
-            task_config.dataset, 
-            task_config.change_percent, 
-            task_config.seed
-        )
+                   f"{task_config.change_percent:.1%} iter {task_config.iteration}")        
         
-        if not success:
-            return None
-        
-        # Then run the optimization
-        if task_config.method.lower() in ['ga', 'ilp', 'vns']:
+        # Run the optimization (perturbation should already be done)
+        if task_config.method.lower() == 'ilp':
+            # ILP needs special handling with lock
+            return runner.run_ilp_optimization_with_lock(task_config, PreprocessingNetwork=PreprocessingNetwork)
+        elif task_config.method.lower() in ['ga', 'vns']:
             return runner.run_r_optimization(task_config, PreprocessingNetwork=PreprocessingNetwork)
         elif task_config.method.lower() == 'caspo':
             return runner.run_caspo_optimization(task_config)
@@ -398,11 +393,48 @@ def create_task_configs(dataset: str, interval: int, iteration: int,
     
     return tasks
 
+def prepare_perturbations(dataset: str, interval: int, iteration: int, max_workers: int = None) -> bool:
+    """
+    Prepare all perturbations for an iteration in parallel.
+    This runs once per iteration and generates all needed perturbed datasets.
+    """
+    runner = OptimizedNetworkRunner(max_workers=max_workers)
+    perturbation_levels = np.linspace(0, 1, interval + 1)[:-1]
+    
+    logger.info(f"Preparing perturbations for {dataset}, iteration {iteration}: {len(perturbation_levels)} levels")
+    
+    # Run perturbations in parallel
+    success_count = 0
+    with ProcessPoolExecutor(max_workers=min(max_workers or os.cpu_count(), len(perturbation_levels))) as executor:
+        # Submit perturbation tasks
+        future_to_percent = {
+            executor.submit(runner.run_perturbation, dataset, change_percent, iteration): change_percent 
+            for change_percent in perturbation_levels
+        }
+        
+        # Collect results
+        for future in as_completed(future_to_percent):
+            change_percent = future_to_percent[future]
+            try:
+                success = future.result(timeout=600)  # 10 minute timeout per perturbation
+                if success:
+                    success_count += 1
+                    logger.info(f"Perturbation completed: {dataset} {change_percent:.1%} iter{iteration}")
+                else:
+                    logger.error(f"Perturbation failed: {dataset} {change_percent:.1%} iter{iteration}")
+            except Exception as e:
+                logger.error(f"Perturbation error {dataset} {change_percent:.1%}: {e}")
+    
+    logger.info(f"Perturbation preparation completed: {success_count}/{len(perturbation_levels)} successful")
+    return success_count == len(perturbation_levels)
+
 def run_parallel_analysis(dataset: str, interval: int = 10, iteration: int = 1, 
                          methods: List[str] = None, max_workers: int = None,
                          PreprocessingNetwork: bool = True) -> pd.DataFrame:
     """
-    Run parallel analysis using ProcessPoolExecutor for true parallelism.
+    Run parallel analysis with hybrid approach:
+    - ILP tasks run sequentially (using ThreadPoolExecutor with lock)
+    - Other tasks run in parallel (using ProcessPoolExecutor)
     """
     if methods is None:
         methods = ['ga', 'ilp', 'vns', 'caspo']
@@ -410,34 +442,67 @@ def run_parallel_analysis(dataset: str, interval: int = 10, iteration: int = 1,
     if max_workers is None:
         max_workers = min(os.cpu_count(), 32)
     
-    logger.info(f"Starting parallel analysis: {dataset}, interval={interval}, "
+    logger.info(f"Starting hybrid parallel analysis: {dataset}, interval={interval}, "
                f"iteration={iteration}, methods={methods}, workers={max_workers}")
     
-    # Create all task configurations
-    tasks = create_task_configs(dataset, interval, iteration, methods)
-    logger.info(f"Created {len(tasks)} tasks")
-    
-    # Run tasks in parallel
-    results = []
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_task = {executor.submit(run_single_task, task, 
-                                          PreprocessingNetwork=PreprocessingNetwork): task for task in tasks}
+    # First, prepare all perturbations for this iteration
+    logger.info("Step 1: Preparing perturbations...")
+    perturbation_success = prepare_perturbations(dataset, interval, iteration, max_workers)
 
-        # Collect results as they complete
-        for future in as_completed(future_to_task):
-            task = future_to_task[future]
-            try:
-                result = future.result(timeout=7200)  # 2 hour timeout per task
-                if result:
-                    results.append(result)
-                    logger.info(f"Completed: {task.dataset} {task.method} "
-                               f"{task.change_percent:.1%} iter{task.iteration}")
-                else:
-                    logger.warning(f"Failed: {task.dataset} {task.method} "
-                                  f"{task.change_percent:.1%} iter{task.iteration}")
-            except Exception as e:
-                logger.error(f"Task failed with exception: {task.dataset} {task.method}: {e}")
+    if not perturbation_success:
+        logger.error("Failed to prepare perturbations, skipping optimization")
+        return pd.DataFrame()    
+
+    # Then create optimization task configurations
+    logger.info("Step 2: Creating optimization tasks...")
+    tasks = create_task_configs(dataset, interval, iteration, methods)
+    logger.info(f"Created {len(tasks)} optimization tasks")
+    
+    # Separate ILP tasks from other tasks
+    ilp_tasks = [task for task in tasks if task.method.lower() == 'ilp']
+    other_tasks = [task for task in tasks if task.method.lower() != 'ilp']
+    logger.info(f"ILP tasks: {len(ilp_tasks)}, Other tasks: {len(other_tasks)}")
+    
+    logger.info("Step 3: Running optimizations...")
+    results = []
+    # Start ILP tasks in a single thread (they will be serialized by the lock)
+    ilp_futures = []
+    if ilp_tasks:
+        logger.info("Starting ILP tasks (serialized)...")
+        ilp_executor = ThreadPoolExecutor(max_workers=1)  # Only one thread for ILP
+        ilp_futures = [ilp_executor.submit(run_single_task, task, PreprocessingNetwork) for task in ilp_tasks]
+    
+    # Start other tasks in parallel processes
+    other_futures = []
+    if other_tasks:
+        logger.info("Starting other tasks (parallel)...")
+        other_executor = ProcessPoolExecutor(max_workers=max_workers)
+        other_futures = [other_executor.submit(run_single_task, task, PreprocessingNetwork) for task in other_tasks]
+    
+    # Collect results from both executors
+    all_futures = []
+    if ilp_futures:
+        all_futures.extend([(f, 'ILP') for f in ilp_futures])
+    if other_futures:
+        all_futures.extend([(f, 'OTHER') for f in other_futures])
+    
+    for future, task_type in all_futures:
+        try:
+            result = future.result(timeout=7200)  # 2 hour timeout per task
+            if result:
+                results.append(result)
+                logger.info(f"Completed ({task_type}): {result.get('dataset')} {result.get('method')} "
+                           f"{result.get('change_percent'):.1%} iter{result.get('iteration')}")
+            else:
+                logger.warning(f"Failed ({task_type}): task returned None")
+        except Exception as e:
+            logger.error(f"Task failed with exception ({task_type}): {e}")
+    
+    # Cleanup executors
+    if ilp_tasks:
+        ilp_executor.shutdown(wait=True)
+    if other_tasks:
+        other_executor.shutdown(wait=True)
     
     # Convert to DataFrame
     if results:
@@ -460,7 +525,20 @@ def run_sequential_analysis(dataset: str, interval: int = 10, iteration: int = 1
         methods = ['ga', 'ilp', 'vns', 'caspo']
     
     logger.info(f"Starting sequential analysis: {dataset}")
-    
+
+    # First, prepare all perturbations for this iteration
+    logger.info("Step 1: Preparing perturbations...")
+    runner = OptimizedNetworkRunner()
+    perturbation_levels = np.linspace(0, 1, interval + 1)[:-1]    
+
+    for change_percent in perturbation_levels:
+        success = runner.run_perturbation(dataset, change_percent, iteration)
+        if not success:
+            logger.error(f"Failed to prepare perturbation: {dataset} {change_percent:.1%}")
+            return pd.DataFrame()    
+
+    # Then run optimization tasks
+    logger.info("Step 2: Running optimizations...")
     tasks = create_task_configs(dataset, interval, iteration, methods)
     results = []
     
@@ -482,7 +560,7 @@ def run_sequential_analysis(dataset: str, interval: int = 10, iteration: int = 1
 def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(
-        description="Optimized parallel network analysis runner"
+        description="Optimized parallel network analysis runner with thread-safe perturbation"
     )
     parser.add_argument("-n", "--ntimes", type=int, default=10,
                        help="Number of iterations (default: 10)")
@@ -501,7 +579,7 @@ def main():
                        help="Methods to run")
     
     args = parser.parse_args()
-    
+            
     # Setup
     logger.info(f"Setting up analysis for dataset: {args.dataset}, "
                 f"iterations: {args.ntimes}, interval: {args.length}, "
