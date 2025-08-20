@@ -12,10 +12,12 @@ test:
 
 toy: 
 	rm network_analysis.log
-	python Step_03_Performance.py -p
+	python Step_03_Performance.py -p -d toy
+	python Step_04_Plot.py -d toy
 
 dream:
 	rm network_analysis.log
 	python Step_03_Performance.py -d dream -p
+	python Step_04_Plot.py -d dream
 
 .PHONY: install

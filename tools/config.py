@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Sequence
 import json, os, sys
 
 
@@ -270,7 +270,7 @@ class AdaptiveParameterManager:
 
 
 # Example usage and testing functions
-def create_experiment_configs(perturbation_levels: list, base_size_factor: float = 1e-4) -> Dict[float, AdaptiveParameterManager]:
+def create_experiment_configs(perturbation_levels: Sequence[float], base_size_factor: float = 1e-4) -> Dict[float, AdaptiveParameterManager]:
     """
     Create configuration managers for multiple perturbation levels.
     

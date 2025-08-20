@@ -684,7 +684,9 @@ runPerturbPipeline <- function(dataset      = "toy",
   
   # 4) Save the modified model files
   message("Saving modified model files...")
-  save(mod_model, file=rdata_fname)
+  if (!file.exists(rdata_fname)) {
+    save(mod_model, file=rdata_fname)
+  }
   writeSIF(mod_model, file=sif_fname, overwrite=TRUE)
   message("Wrote:\n - RData → ", rdata_fname, "\n - SIF   → ", sif_fname, "\n")
   
@@ -752,7 +754,9 @@ runPerturbPipeline <- function(dataset      = "toy",
     
     # Save seed information for reproducibility
     seed_file <- file.path(cv_dir, "seed.txt")
-    cat(seed, file = seed_file)
+    if (!file.exists(seed_file)) {
+      cat(seed, file = seed_file)
+    }
   }
   
   # 8) Create train/validation splits for each fold
@@ -795,17 +799,22 @@ runPerturbPipeline <- function(dataset      = "toy",
     # Save the split datasets
     train_file <- file.path(cv_dir, "CNOlist_train.RData")
     val_file <- file.path(cv_dir, "CNOlist_val.RData")
-    
-    save(CNOlistTrain, file = train_file)
-    save(CNOlistVal, file = val_file)
+    if (!file.exists(train_file)) {
+      save(CNOlistTrain, file = train_file)
+    }
+    if (!file.exists(val_file)) {
+      save(CNOlistVal, file = val_file)
+    }
 
     message(sprintf("Saved fold %d data to: %s", j, cv_dir))
   }
   
   # 9) Save the split information for later reference
   splits_file <- file.path(output_file, "splits.RData")
-  save(splits, file = splits_file)
-  
+  if (!file.exists(splits_file)) {
+    save(splits, file = splits_file)
+  }
+
   # Create a summary of the cross-validation setup
   cv_summary <- list(
     dataset = dataset,
@@ -818,7 +827,10 @@ runPerturbPipeline <- function(dataset      = "toy",
   )
   
   summary_file <- file.path(output_file, "cv_summary.RData")
-  save(cv_summary, file = summary_file)
+  if (!file.exists(summary_file)) {
+    save(cv_summary, file = summary_file)
+  }
+  
   
   message("Cross-validation setup complete!")
   message(sprintf("Main directory: %s", output_file))

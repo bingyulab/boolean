@@ -5,6 +5,81 @@ from tools.functions import setup_logger
 logger = setup_logger()
 
 
+class GlobalLockManager:
+    """
+    Global lock manager for managing cross-process locks.
+    Handles both perturbation locks and method-specific locks (like ILP).
+    """
+    
+    def __init__(self, base_dir: str = "output"):
+        self.base_dir = Path(base_dir)
+        self.lock_dir = self.base_dir / "locks"
+        self.lock_dir.mkdir(parents=True, exist_ok=True)
+        
+    def get_lock_file(self, key: str) -> Path:
+        """Get the lock file path for a key."""
+        return self.lock_dir / f"{key}.lock"
+    
+    def get_done_file(self, key: str) -> Path:
+        """Get the completion marker file path."""
+        return self.lock_dir / f"{key}.done"
+    
+    def acquire_lock(self, key: str, max_wait_time: int = 3600) -> bool:
+        """
+        Try to acquire a lock with timeout.
+        Returns True if lock acquired, False if timeout.
+        """
+        lock_file = self.get_lock_file(key)
+        wait_time = 0
+        check_interval = 5  # Check every 5 seconds
+        
+        while wait_time < max_wait_time:
+            try:
+                # Try to create lock file atomically
+                lock_file.touch(exist_ok=False)
+                logger.info(f"Acquired lock: {key}")
+                return True
+            except FileExistsError:
+                # Another process has the lock, wait
+                logger.debug(f"Waiting for lock: {key} (waited {wait_time}s)")
+                time.sleep(check_interval)
+                wait_time += check_interval
+        
+        logger.error(f"Timeout waiting for lock: {key}")
+        return False
+    
+    def release_lock(self, key: str) -> None:
+        """Release a lock."""
+        lock_file = self.get_lock_file(key)
+        try:
+            if lock_file.exists():
+                lock_file.unlink()
+                logger.debug(f"Released lock: {key}")
+        except Exception as e:
+            logger.warning(f"Failed to release lock {key}: {e}")
+    
+    def cleanup_locks(self, pattern: str = None):
+        """Clean up lock files, optionally matching a pattern."""
+        try:
+            if pattern:
+                lock_files = list(self.lock_dir.glob(f"{pattern}*.lock"))
+                done_files = list(self.lock_dir.glob(f"{pattern}*.done"))
+            else:
+                lock_files = list(self.lock_dir.glob("*.lock"))
+                done_files = list(self.lock_dir.glob("*.done"))
+            
+            files_to_remove = lock_files + done_files
+            for file_path in files_to_remove:
+                try:
+                    file_path.unlink()
+                    logger.debug(f"Removed lock file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove {file_path}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error during lock cleanup: {e}")
+            
+
 class PerturbationManager:
     """
     Thread-safe perturbation manager using file-based locking.

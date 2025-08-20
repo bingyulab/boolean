@@ -1,18 +1,13 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import scienceplots
-import numpy as np
-import os
 from pathlib import Path
 import glob
-
 import argparse
-
 # Set up the plotting style for better-looking figures
-# plt.style.use('seaborn-v0_8')
+plt.style.use('seaborn-v0_8')
 # sns.set_palette("husl")
-plt.style.use('science')
+# plt.style.use(['science'])
 
 # Define the methods and their colors for consistent visualization
 methods = ['CASPO', 'VNS', 'GA', 'ILP']
@@ -54,7 +49,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     # Define key metrics to focus on
     key_metrics = {
-        'Similarity Metrics': ['jaccard_similarity', 'hamming_similarity', 'composite_score'],
+        'Similarity Metrics': ['jaccard', 'hamming', 'composite_score'],
         'Coverage Metrics': ['precision', 'recall', 'f1_score'],
     }
     
@@ -62,29 +57,19 @@ def create_comparison_plots(df, dataset_name='toy'):
     fig, axes = plt.subplots(2, 2, figsize=(8, 6))
     fig.suptitle(f'Core Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
-    plot_metric(df, axes[0, 0], 'jaccard_similarity', 'Jaccard Similarity Performance', 'o')
-    plot_metric(df, axes[0, 1], 'hamming_similarity', 'Hamming Similarity Performance', 's')
+    plot_metric(df, axes[0, 0], 'jaccard', 'Jaccard Similarity Performance', 'o')
+    plot_metric(df, axes[0, 1], 'hamming', 'Hamming Similarity Performance', 's')
     plot_metric(df, axes[1, 0], 'jaccard_topology', 'Jaccard Topology Performance', '^')
     plot_metric(df, axes[1, 1], 'f1_score', 'F1 Score Performance', 'D')
     plt.tight_layout()
     fig.savefig(output_dir / 'core_similarity_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-    
-    # Create figure 2: Coverage and precision metrics
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6))
-    fig.suptitle(f'Coverage and Precision Metrics Analysis of {dataset_name}', fontsize=16, fontweight='bold')
-
-    plot_metric(df, axes[0], 'precision', 'Precision Performance', 'o')
-    plot_metric(df, axes[1], 'recall', 'Recall Performance', 's')
-    plt.tight_layout()
-    fig.savefig(output_dir / 'coverage_precision_metrics.png', dpi=300, bbox_inches='tight')
-    plt.close(fig)
-            
-    # Create figure 3: Performance summary heatmap
+                
+    # Create figure 2: Performance summary heatmap
     fig, ax = plt.subplots(figsize=(8, 6))
     
     # Calculate average performance for each method across all change percentages
-    performance_summary = df.groupby('method')[['jaccard_similarity', 'hamming_similarity', 'jaccard_topology',
+    performance_summary = df.groupby('method')[['jaccard', 'hamming', 'jaccard_topology',
                                                 'composite_score', 'f1_score', 'precision', 'recall']].mean()
 
     sns.heatmap(
@@ -100,21 +85,14 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.tight_layout()
     fig.savefig(output_dir / 'performance_summary_heatmap.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-    
-    # Create figure 4: jaccard_topology plot    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    plot_metric(df, ax, 'jaccard_topology', 'Jaccard Topology Performance', 'o')
-    plt.tight_layout()
-    fig.savefig(output_dir / 'jaccard_topology.png', dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    
-    # Create figure 5: Runtime comparison
+        
+    # Create figure 3: Runtime comparison
     if 'total_time' in df.columns:      
         fig, ax = plt.subplots(figsize=(8, 6))  
         
         for method in methods:
             method_data = df[df['method'] == method]
-            ax.semilogy(method_data['change_percent'], method_data['total_time'], 
+            ax.plot(method_data['change_percent'], method_data['total_time'], 
                        marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method])
         
         ax.set_xlabel('Change Percentage')
@@ -127,11 +105,11 @@ def create_comparison_plots(df, dataset_name='toy'):
         plt.savefig(output_dir / 'runtime_comparison.png', dpi=300, bbox_inches='tight')
         plt.close()
     
-    # Create figure 6: Robustness analysis (performance degradation)    
+    # Create figure 4: Robustness analysis (performance degradation)    
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
-    metrics_to_analyze = ['composite_score', 'f1_score', 'jaccard_similarity', 'hamming_similarity', 'jaccard_topology']
+    metrics_to_analyze = ['composite_score', 'f1_score', 'jaccard', 'hamming', 'jaccard_topology']
 
     for i, method in enumerate(methods):
         ax_sub = axes[i // 2, i % 2]
@@ -159,12 +137,12 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.savefig(output_dir / 'robustness_analysis.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-    # 7 plot number of reconstruct attractors
+    # Create figure 5: Number of reconstruct attractors
     fig, ax = plt.subplots(figsize=(8, 6))
 
     for method in methods:
         method_data = df[df['method'] == method]
-        ax.semilogy(method_data['change_percent'], method_data['recon_total'], 
+        ax.plot(method_data['change_percent'], method_data['recon_total'], 
                     marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method])
 
     ax.set_xlabel('Change Percentage')
@@ -209,17 +187,6 @@ def compute_attractor_count_penalty(self, expected_attractors=None):
     
     return penalty
 
-def rescale_similarity(df, metric):
-    recon_size = df['recon_total']
-    orig_size = df['orig_total']
-    ratio = orig_size / max(orig_size, 1)
-    if ratio <= 1:
-        penalty = 1.0  # No penalty for fewer attractors
-    else:
-        # Penalty increases rapidly after 2x the expected count
-        penalty = 2.0 / (1.0 + np.exp(0.5 * (ratio - 2)))
-    return df[metric] * penalty
-
 def load_results(pattern):
     paths = glob.glob(pattern)
     if not paths:
@@ -237,14 +204,10 @@ def load_and_plot_results(dataset_name='toy'):
 
     full_df = load_results(pattern)
     print(full_df.head())
-    full_df['jaccard_similarity'] = full_df.apply(lambda row: rescale_similarity(row, 'jaccard_similarity'), axis=1)
-    full_df['hamming_similarity'] = full_df.apply(lambda row: rescale_similarity(row, 'hamming_similarity'), axis=1)    
-    
-    print(full_df.head())
     
     avg_columns = [
-        'jaccard_similarity', 'hamming_similarity', 'composite_score',
-        'precision', 'recall', 'f1_score', 'true_positives', 'orig_total', 'recon_total',
+        'jaccard', 'hamming', 'composite_score',
+        'precision', 'recall', 'f1_score', 'recon_total',
         'total_time', 'jaccard_topology'
     ]
 
@@ -263,8 +226,8 @@ def load_and_plot_results(dataset_name='toy'):
         method_data = df[df['method'] == method]
         avg_topo    = method_data['jaccard_topology'].mean()
         avg_composite = method_data['composite_score'].mean()
-        avg_jaccard = method_data['jaccard_similarity'].mean()
-        avg_hamming = method_data['hamming_similarity'].mean()
+        avg_jaccard = method_data['jaccard'].mean()
+        avg_hamming = method_data['hamming'].mean()
         avg_f1      = method_data['f1_score'].mean()
         print(f"{method.upper():>6}: Avg Composite Score = {avg_composite:.3f}, Avg Jaccard = {avg_jaccard:.3f}, Avg Hamming = {avg_hamming:.3f}, Avg F1 score = {avg_f1:.3f}, Avg Topology = {avg_topo:.3f}")
 
@@ -276,7 +239,7 @@ def load_and_plot_results(dataset_name='toy'):
         toy_df['dataset'] = "Toy"
         combined_df = pd.concat([df, toy_df], ignore_index=True)
 
-        for metric in ['jaccard_similarity', 'hamming_similarity', 'composite_score', 'total_time', 'jaccard_topology', 'recon_total']:
+        for metric in ['jaccard', 'hamming', 'composite_score', 'total_time', 'jaccard_topology', 'recon_total']:
             fig, axes = plt.subplots(2, 2, figsize=(8, 6))
             fig.suptitle(f'{metric} Similarity Metrics Comparison Across Network', fontsize=16, fontweight='bold')
             ymin, ymax = combined_df[metric].min(), combined_df[metric].max()

@@ -1,16 +1,11 @@
 import pyboolnet.file_exchange as FileExchange
-import pyboolnet.interaction_graphs as IG
 import pyboolnet.attractors as Attractors
 import pyboolnet.basins_of_attraction as Basins
-import pyboolnet.state_transition_graphs as STGs
 import numpy as np
 import pandas as pd
-from scipy.spatial.distance import jaccard, hamming
 from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import adjusted_rand_score
-from itertools import combinations
-import warnings
 from rpy2.robjects.vectors import FloatVector
+from scipy.stats import entropy
 
 
 def limit_float(x, nbit=2):
@@ -92,7 +87,7 @@ class AttractorAnalysis:
             comp_attrs = [x[1] for x in tmp_res]
             results = self.compare_multiple_attractors(ori_primes, ori_attrs, com_primes, comp_attrs)
         return results
-        
+            
 
 class AttractorComparison:
     """
@@ -100,240 +95,309 @@ class AttractorComparison:
     handling variable network sizes and attractor counts.
     """
 
-    def __init__(self, ori_primes, original_attractors, recon_primes, reconstructed_attractors, threshold=0.9):
+    def __init__(self, ori_primes, original_attractors, recon_primes, 
+                 reconstructed_attractors, basin_weight=0.3):
         self.ori_primes = ori_primes
-        self.com_primes = recon_primes
+        self.recon_primes = recon_primes
+        self.basin_weight = basin_weight  # Weight for basin size consideration        
         
+        self.recon_total = len(reconstructed_attractors)
         self.original_attractors = original_attractors
-        self.reconstructed_attractors = reconstructed_attractors
-        self.threshold = threshold
-
-        # Identify common nodes and project                
-        self.common_nodes = self._find_common_nodes()
-        # Build union of all nodes from both networks
-        ori_nodes = set(self.original_attractors[0]['dict'].keys())
-        recon_nodes = set(self.reconstructed_attractors[0]['dict'].keys())
-        self.all_nodes = sorted(list(ori_nodes.union(recon_nodes)))
-    
-        self.orig_vecs, self.pres_ori = self._build_matrices(self.original_attractors)
-        self.recon_vecs, self.pres_recon = self._build_matrices(self.reconstructed_attractors)
-
-        self.ori_basin_sizes = self._compute_basin_sizes(self.ori_primes, self.original_attractors)
-        self.recon_basin_sizes = self._compute_basin_sizes(self.com_primes, self.reconstructed_attractors)
-        
-        b_ori_norm = self.ori_basin_sizes / (self.ori_basin_sizes.sum() or 1)
-        b_recon_norm = self.recon_basin_sizes / (self.recon_basin_sizes.sum() or 1)
-        # Geometric mean weights
-        self.W = np.sqrt(b_ori_norm.reshape(-1, 1) * b_recon_norm.reshape(1, -1))                           # shape (n,m)
-
-        # Precompute enhanced similarity matrix & matching
-        self._compute_matching()
-        
-    def _find_common_nodes(self):
-        """Find nodes present in both original and reconstructed networks."""
-        if not self.original_attractors or not self.reconstructed_attractors:
-            return set()
-        
-        orig_nodes = set(self.original_attractors[0]['dict'].keys())
-        recon_nodes = set(self.reconstructed_attractors[0]['dict'].keys())
-        return orig_nodes.intersection(recon_nodes)    
-    
-    def _build_matrices(self, attractors):
-        """
-        For each attractor, build:
-          - vec: boolean vector over all_nodes (True if node=1)
-          - pres: boolean mask (True if node is defined in the attractor)
-        """
-        vecs = []
-        pres = []
-        for att in attractors:
-            d = att['dict']
-            vecs.append([bool(d.get(node, False)) for node in self.all_nodes])
-            pres.append([node in d for node in self.all_nodes])
-        return np.array(vecs, dtype=bool), np.array(pres, dtype=bool)
-    
-    def _compute_basin_sizes(self, primes, attractors):
-        weight = [AttractorAnalysis.get_basin_sizes(primes, att['str']) for att in attractors]
-        return np.array(weight)
-
-    def _compute_matching(self):
-        n, m = len(self.orig_vecs), len(self.recon_vecs)
-        if n == 0 or m == 0:
-            self.match_sims = []
-            return
-        
-        # Compute masked Jaccard for each pair
-        sim_matrix = np.zeros((n, m), dtype=float)
-        for i in range(n):
-            for j in range(m):
-                mask = self.pres_ori[i] & self.pres_recon[j]
-                if not mask.any():
-                    sim_matrix[i, j] = 0.0
-                else:
-                    a = self.orig_vecs[i]
-                    b = self.recon_vecs[j]
-                    inter = np.sum((a & b) & mask)
-                    uni   = np.sum((a | b) & mask)
-                    sim_matrix[i, j] = inter / uni if uni > 0 else 0.0
-
-        # Hungarian assignment
-        cost = -(self.W * sim_matrix)
-        row, col = linear_sum_assignment(cost)
-        pairs = [(i, j) for i, j in zip(row, col) if i < n and j < m]
-        self.match_sims = [sim_matrix[i, j] for i, j in pairs]
-
-    def compute_global_jaccard(self):
-        # larger values indeed mean better matches
-        return limit_float(np.mean(self.match_sims)  if self.match_sims else 0.0)
-
-    def compute_global_hamming(self):
-        """Mean Hamming similarity over optimal one-to-one matching."""
-        # Larger values indicate better matches
-        # Recompute with hamming if needed
-        n, m = len(self.orig_vecs), len(self.recon_vecs)
-        if len(self.orig_vecs) == 0 or len(self.recon_vecs) == 0:
-            return 0.0        
-        
-        # Compute masked Hamming for each pair
-        # D_{ij} = sum_k |a_i[k] - b_j[k]| over only coords where both define the node.    
-        dist_matrix = np.zeros((n, m), dtype=float)
-        for i in range(n):
-            for j in range(m):
-                mask = self.pres_ori[i] & self.pres_recon[j]
-                if not mask.any():
-                    dist_matrix[i, j] = 0.0
-                else:
-                    a = self.orig_vecs[i, mask].astype(int)
-                    b = self.recon_vecs[j, mask].astype(int)
-                    # Hamming distance = sum of mismatches
-                    dist_matrix[i, j] = np.sum(np.abs(a - b))
-                
-        # For Hungarian algorithm, we use distances directly as costs
-        # (no need to negate since we want minimum distance)
-        row, col = linear_sum_assignment(self.W * dist_matrix)
-        
-        # Extract the matched similarities
-        match_sims = [dist_matrix[i, j] for i, j in zip(row, col)
-                      if i < len(self.orig_vecs) and j < len(self.recon_vecs)]
-        
-        if not match_sims:
-            return 0.0
-
-        # Convert mean Hamming distance back into similarity [0,1]:
-        # max distance per pair = #masked_coords, but these vary per pair.
-        # We approximate by dividing by the average masked-length:
-        lengths = []
-        for i, j in zip(row, col):
-            mask = self.pres_ori[i] & self.pres_recon[j]
-            lengths.append(np.sum(mask))
-        avg_length = np.mean(lengths) if lengths else 1.0
-
-        mean_dist = np.mean(match_sims)
-        similarity = 1.0 - (mean_dist / avg_length)
-        return limit_float(similarity)
-
-    def compute_coverage(self):
-        """
-        Decoupled precision/recall with threshold.
-        """
-        tp = sum(1 for sim in self.match_sims if sim >= self.threshold)
-        prec = tp / len(self.reconstructed_attractors) if self.reconstructed_attractors else 0.0
-        rec  = tp / len(self.original_attractors)  if self.original_attractors  else 0.0
-        f1   = (2 * prec * rec / (prec + rec)) if (prec + rec) > 0 else 0.0
-        return {
-            'precision': limit_float(prec),
-            'recall':    limit_float(rec),
-            'f1_score':  limit_float(f1),
-            'true_positives': tp,
-            'orig_total': len(self.original_attractors),
-            'recon_total': len(self.reconstructed_attractors)
-        }        
-        
-    def comprehensive_comparison(self, Return_DF=True):
-        """
-        Perform comprehensive comparison using multiple metrics.
-        
-        Returns:
-        --------
-        dict : Comprehensive comparison results
-        """
-        results = {
-            'common_nodes': len(self.common_nodes),   
-            'jaccard_similarity': self.compute_global_jaccard(),
-            'hamming_similarity': self.compute_global_hamming(),
-            'coverage_metrics': self.compute_coverage(),     
-        }
-        
-        # Compute composite score
-        weights = {
-            'jaccard': 0.4,
-            'hamming': 0.4,
-            'coverage_f1': 0.2
-        }
-        
-        composite_score = (
-            weights['jaccard'] * results['jaccard_similarity'] +
-            weights['hamming'] * results['hamming_similarity'] +
-            weights['coverage_f1'] * results['coverage_metrics']['f1_score'] 
+        self.reconstructed_attractors = self._select_attractors_for_comparison(
+            reconstructed_attractors, len(original_attractors)
         )
         
-        results['composite_score'] = limit_float(composite_score)
+        # Get node sets
+        self.orig_nodes = self._get_nodes_from_attractors(self.original_attractors)
+        self.recon_nodes = self._get_nodes_from_attractors(self.reconstructed_attractors)
+        self.common_nodes = self.orig_nodes.intersection(self.recon_nodes)
+        self.all_nodes = sorted(list(self.orig_nodes.union(self.recon_nodes)))
         
-        return self.to_dataframe(results) if Return_DF else results
-    
-    def to_dataframe(self, results):
-        flat = results.copy()
-        if 'coverage_metrics' in flat:
-            cov = flat.pop('coverage_metrics')
-            for k, v in cov.items():
-                flat[k] = v
-        # Create DataFrame
-        df = pd.DataFrame([flat])
-        return df
-    
-    def _dict_to_vector(self, attractor_dict):
-        """Convert attractor dictionary to binary vector."""
-        return np.array([attractor_dict.get(node, 0) for node in sorted(self.common_nodes)])
-    
-    def _dict_to_tuple(self, attractor_dict):
-        """Convert attractor dictionary to tuple for set operations."""
-        return tuple(attractor_dict.get(node, 0) for node in sorted(self.common_nodes))
-    
-    def _compute_diversity(self, attractors):
-        """Compute diversity measure for attractor set."""
-        if len(attractors) <= 1:
-            return 0.0
+        # Build enhanced representations
+        self._build_enhanced_representations()
         
-        vectors = [self._dict_to_vector(att) for att in attractors]
-        total_distance = 0
-        count = 0
-        
-        for i, j in combinations(range(len(vectors)), 2):
-            total_distance += hamming(vectors[i], vectors[j])
-            count += 1
-        
-        return total_distance / count if count > 0 else 0.0
+        # Compute basin sizes for weighting
+        self.orig_basins = self._compute_basin_sizes(ori_primes, self.original_attractors)
+        self.recon_basins = self._compute_basin_sizes(recon_primes, self.reconstructed_attractors)
+            
+    def _compute_basin_sizes(self, primes, attractors):
+        weight = [AttractorAnalysis.get_basin_sizes(primes, att['str']) for att in attractors]        
+        weights = np.array(weight)
+        # Normalize to prevent scale issues
+        return weights / np.sum(weights) if np.sum(weights) > 0 else weights
     
-    def _extract_active_patterns(self, attractors):
-        """Extract active node patterns from attractors."""
-        patterns = set()
-        for attractor in attractors:
-            active_nodes = frozenset(node for node, state in attractor.items() if state == 1)
-            patterns.add(active_nodes)
-        return patterns
+    def _select_attractors_for_comparison(self, attractors, max_count):
+        if len(attractors) <= max_count:
+            return attractors
+        # Select top K attractors by basin size
+        basin_sizes = self._compute_basin_sizes(self.recon_primes, attractors)
+        #  Normalize basin sizes to [0,1] to prevent overflow
+        basin_sizes = basin_sizes / np.max(basin_sizes) if np.max(basin_sizes) > 0 else basin_sizes
+        # Get indices of top K attractors
+        top_indices = np.argsort(basin_sizes)[::-1][:max_count]
+        return [attractors[i] for i in top_indices]            
     
-    def _compute_node_activity(self, attractors):
-        """Compute average activity level for each node."""
-        activity = {}
-        for node in self.common_nodes:
-            activity[node] = np.mean([att.get(node, 0) for att in attractors])
-        return activity
+    def _get_nodes_from_attractors(self, attractors):
+        """Get all unique nodes from attractors."""
+        if not attractors:
+            return set()
+        nodes = set()
+        for att in attractors:
+            nodes.update(att['dict'].keys())
+        return nodes
+    
+    def _build_enhanced_representations(self):
+        """
+        Build enhanced representations that handle missing nodes properly.
+        Uses three-state representation: 0, 1, NaN (missing)
+        """
+        self.orig_enhanced = []
+        self.recon_enhanced = []
+        
+        # Build for original attractors
+        for att in self.original_attractors:
+            vector = []
+            for node in self.all_nodes:
+                if node in att['dict']:
+                    vector.append(float(att['dict'][node]))
+                else:
+                    vector.append(np.nan)  # Missing node
+            self.orig_enhanced.append(vector)
+        
+        # Build for reconstructed attractors
+        for att in self.reconstructed_attractors:
+            vector = []
+            for node in self.all_nodes:
+                if node in att['dict']:
+                    vector.append(float(att['dict'][node]))
+                else:
+                    vector.append(np.nan)  # Missing node
+            self.recon_enhanced.append(vector)
+        
+        self.orig_enhanced = np.array(self.orig_enhanced)
+        self.recon_enhanced = np.array(self.recon_enhanced)
+    
+    def _compute_pairwise_similarity(self, vec1, vec2, similarity_type='jaccard'):
+        """
+        Compute similarity between two vectors handling NaN values properly.
+        """
+        # Find positions where both vectors have defined values
+        mask = ~(np.isnan(vec1) | np.isnan(vec2))
+        
+        if not np.any(mask):
+            return 0.0  # No common nodes
+        
+        v1_masked = vec1[mask]
+        v2_masked = vec2[mask]
+        
+        if similarity_type == 'jaccard':
+            # Modified Jaccard for missing nodes
+            intersection = np.sum(v1_masked == v2_masked)
+            union = len(v1_masked)  # All compared positions
+            return intersection / union if union > 0 else 0.0
+            
+        elif similarity_type == 'hamming':
+            # Hamming similarity
+            matches = np.sum(v1_masked == v2_masked)
+            total = len(v1_masked)
+            return matches / total if total > 0 else 0.0
 
+    def _compute_similarity_matrix(self, similarity_type='jaccard'):
+        """Compute similarity matrix between all pairs of attractors."""
+        n_orig = len(self.orig_enhanced)
+        n_recon = len(self.recon_enhanced)
+        
+        if n_orig == 0 or n_recon == 0:
+            return np.array([]).reshape(n_orig, n_recon)
+        
+        sim_matrix = np.zeros((n_orig, n_recon))
+        
+        for i in range(n_orig):
+            for j in range(n_recon):
+                sim_matrix[i, j] = self._compute_pairwise_similarity(
+                    self.orig_enhanced[i], self.recon_enhanced[j], similarity_type)
+        
+        return sim_matrix
+
+    def compute_optimal_matching_metrics(self):
+        """
+        Compute metrics based on optimal bipartite matching.
+        This addresses the third problem by finding best matches first.
+        """
+        # Compute similarity matrices for different metrics
+        jaccard_matrix = self._compute_similarity_matrix('jaccard')
+        hamming_matrix = self._compute_similarity_matrix('hamming')
+        
+        n_orig = len(self.original_attractors)
+        n_recon = len(self.reconstructed_attractors)
+        
+        if n_orig == 0 or n_recon == 0:
+            return self._empty_results()
+        
+        # Use Jaccard for matching (most robust for categorical data)
+        cost_matrix = 1 - jaccard_matrix
+        
+        # Handle rectangular matrices for Hungarian algorithm
+        if n_orig != n_recon:
+            # Pad with high costs to handle different sizes
+            max_dim = max(n_orig, n_recon)
+            padded_cost = np.full((max_dim, max_dim), 2.0)  # Cost > 1
+            padded_cost[:n_orig, :n_recon] = cost_matrix
+            row_ind, col_ind = linear_sum_assignment(padded_cost)
+            
+            # Filter out padding matches
+            valid_matches = [(i, j) for i, j in zip(row_ind, col_ind) 
+                           if i < n_orig and j < n_recon]
+        else:
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            valid_matches = list(zip(row_ind, col_ind))
+        
+        # Compute metrics for matched pairs
+        matched_jaccard = []
+        matched_hamming = []
+        
+        for i, j in valid_matches:
+            matched_jaccard.append(jaccard_matrix[i, j])
+            matched_hamming.append(hamming_matrix[i, j])
+        
+        true_positives = 0
+        false_positives = 0
+        false_negatives = 0
+
+        for i, j in valid_matches:
+            vec_true = self.orig_enhanced[i]
+            vec_pred = self.recon_enhanced[j]
+            
+            # Iterate over all nodes in the union space
+            for node_idx in range(len(self.all_nodes)):
+                true_val = vec_true[node_idx]
+                pred_val = vec_pred[node_idx]
+                
+                # Valid comparison is possible only if the original value is not NaN
+                if not np.isnan(true_val):
+                    # True Positive: Both are 1 and match
+                    if true_val == 1 and pred_val == 1:
+                        true_positives += 1
+                    # False Positive: Original is 0, but prediction is 1
+                    elif true_val == 0 and pred_val == 1:
+                        false_positives += 1
+                    # False Negative: Original is 1, but prediction is 0 or NaN (missing)
+                    elif true_val == 1 and (pred_val == 0 or np.isnan(pred_val)):
+                        false_negatives += 1
+
+        # Calculate precision, recall, and F1 score from the counts
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        return {
+            'jaccard': np.mean(matched_jaccard) if matched_jaccard else 0.0,
+            'hamming': np.mean(matched_hamming) if matched_hamming else 0.0,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1,
+            'total_matches': len(valid_matches),
+            'orig_count': n_orig,
+            'recon_count': n_recon
+        }
+
+    def compute_structural_similarity(self):
+        """
+        Compute structural similarity accounting for attractor count differences.
+        This addresses the second problem.
+        """
+        n_orig = len(self.original_attractors)
+        n_recon = len(self.reconstructed_attractors)
+        
+        # Count penalty for different numbers of attractors
+        count_penalty = abs(n_orig - n_recon) / max(n_orig, n_recon, 1)
+        
+        # Basin size distribution similarity (if available)
+        basin_similarity = 0.0
+        if len(self.orig_basins) > 0 and len(self.recon_basins) > 0:
+            # Compare basin size distributions using KL divergence
+            orig_dist = self.orig_basins + 1e-10  # Add small value to avoid log(0)
+            recon_dist = self.recon_basins + 1e-10
+            
+            # Normalize to probabilities
+            orig_dist = orig_dist / np.sum(orig_dist)
+            recon_dist = recon_dist / np.sum(recon_dist)
+            
+            # Pad shorter distribution
+            max_len = max(len(orig_dist), len(recon_dist))
+            if len(orig_dist) < max_len:
+                orig_dist = np.pad(orig_dist, (0, max_len - len(orig_dist)), 'constant', constant_values=1e-10)
+            if len(recon_dist) < max_len:
+                recon_dist = np.pad(recon_dist, (0, max_len - len(recon_dist)), 'constant', constant_values=1e-10)
+            
+            # Jensen-Shannon divergence (symmetric and bounded)
+            m = 0.5 * (orig_dist + recon_dist)
+            js_div = 0.5 * (entropy(orig_dist, m) + entropy(recon_dist, m))
+            basin_similarity = 1 - js_div  # Convert divergence to similarity
+        
+        structural_score = (1 - count_penalty) * (1 - self.basin_weight) + basin_similarity * self.basin_weight
+        
+        return {
+            'structural_score': max(0, structural_score),  # Ensure non-negative
+            'count_penalty': count_penalty,
+            'basin_similarity': basin_similarity,
+            'orig_attractor_count': n_orig,
+            'recon_attractor_count': n_recon,            
+            'recon_total': self.recon_total
+        }
+    
+    def _empty_results(self):
+        """Return empty results when comparison is not possible."""
+        return {
+            'jaccard': 0.0, 'hamming': 0.0, 
+            'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0,
+            'high_quality_matches': 0, 'total_matches': 0,
+            'orig_count': len(self.original_attractors),
+            'recon_count': len(self.reconstructed_attractors),
+            'recon_total': self.recon_total
+        }
+    
+    def comprehensive_comparison(self, return_df=True):
+        """
+        Perform comprehensive comparison with improved metrics.
+        """
+        # Optimal matching metrics
+        matching_results = self.compute_optimal_matching_metrics()
+        
+        # Structural similarity
+        structural_results = self.compute_structural_similarity()
+        
+        # Node coverage analysis
+        node_results = {
+            'common_nodes': len(self.common_nodes),
+            'orig_nodes': len(self.orig_nodes),
+            'recon_nodes': len(self.recon_nodes),
+            'node_coverage': len(self.common_nodes) / len(self.orig_nodes) if self.orig_nodes else 0.0
+        }
+        
+        # Combine all results
+        results = {**matching_results, **structural_results, **node_results}
+        
+        # Compute composite score with balanced weighting
+        composite_score = (
+            0.3 * results['jaccard'] +
+            0.2 * results['hamming'] +
+            0.3 * results['f1_score'] +
+            0.2 * results['structural_score']
+        )
+        
+        results['composite_score'] = composite_score
+        
+        if return_df:
+            return pd.DataFrame([results])
+        return results     
     
     
 if __name__ == "__main__":
     ori_primes = "data/ToyModel/ToyModel.bnet"
-    compared_bnet = "data/ToyModel/ToyModel.bnet"
+    # compared_bnet = "data/ToyModel/ToyModel.bnet"
+    # compared_bnet = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
+    compared_bnet = "output/cellnopt/ToyModel/90_Modified/ga/OPT_ToyModel.bnet"
     analysis = AttractorAnalysis(ori_primes, compared_bnet)
     results = analysis.comparison()
     print(results)

@@ -10,4 +10,4 @@ scipy
 seaborn==0.11
 matplotlib==3.8.4
 clingo
-scienceplots
+SciencePlots
