@@ -11,12 +11,14 @@
    1. In experiment data, inhabitator will add extra `i` in the end. 
    2. Different time-points of data acquisition are specified in columns with prefix DA:. 
    **Example**: 
-    | TR:Toy:CellLine | TR:a | TR:b | TR:c | TR:di | DA:f | DA:g | DV:f | DV:g |
-    |---|---|---|---|---:|---:|---:|---:|---:|
-    | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-    | 1 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 |
-    | 1 | 1 | 0 | 1 | 0 | 10 | 10 | 0.9 | 0 |
-    | 1 | 1 | 0 | 1 | 1 | 10 | 10 | 0.1 | 0.9 |
+
+| TR:Toy:CellLine | TR:a | TR:b | TR:c | TR:di | DA:f | DA:g | DV:f | DV:g |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 1 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 |
+| 1 | 1 | 0 | 1 | 0 | 10 | 10 | 0.9 | 0 |
+| 1 | 1 | 0 | 1 | 1 | 10 | 10 | 0.1 | 0.9 |
+
    - When a and c are present, i.e. stimulated, and d is not inhibited, i.e., the inhibitor of d is not present, readouts for f and g at time-point 10 are 0.9 and 0, respectively. 
    - Meanwhile, looking at the four row we would say that when a and c are present and d is inhibited (the inhibitor of d it is present), readouts for f and g at time-point 10 are 0.1 and 0.9, respectively. 
 * pkn network: SIF or Bnet format, data has following requirement:
@@ -75,36 +77,37 @@ Proposed ideas to allow the PKN to be learned or corrected from experiments
 
 
 #### Causal discovery
-    1. **Preprocess** 
-    * Keep only rows where DA time ≠ 0 (your intervention rows).
-    * Discretize if you will use boolean/logic fitting later (e.g. threshold 0.5 or use mixture modeling). But keep continuous versions for regression-based methods.
 
-    2. **Simple intervention effect scoring (fast pruning)**
-    * For each pair (stimulus S, target T) compute:
-        * **Average treatment effect**: `eff(S→T) = mean(T | S=1, other_stimuli=0) − mean(T | S=0, other_stimuli=0)`.
-        * Mutual information and Pearson correlation coefficient.
-    * Large positive/negative `eff` → candidate causal edge. Small → unlikely direct parent. This is your **first filter**.
+1. **Preprocess** 
+* Keep only rows where DA time ≠ 0 (your intervention rows).
+* Discretize if you will use boolean/logic fitting later (e.g. threshold 0.5 or use mixture modeling). But keep continuous versions for regression-based methods.
 
-    3. **Mediator test (to detect indirectness)**
-    * If S→T is strong but on conditioning on M (putative mediator) the effect vanishes: suggests S→M→T rather than S→T direct. Practically compute difference of `eff` when rows with M active/inhibited are considered separately.
+2. **Simple intervention effect scoring (fast pruning)**
+* For each pair (stimulus S, target T) compute:
+    * **Average treatment effect**: `eff(S→T) = mean(T | S=1, other_stimuli=0) − mean(T | S=0, other_stimuli=0)`.
+    * Mutual information and Pearson correlation coefficient.
+* Large positive/negative `eff` → candidate causal edge. Small → unlikely direct parent. This is your **first filter**.
 
-    4. **Per-node regularized regression (parent selection)**
-    * For each node T fit a predictive model using available variables (stimuli, inhibitors, other readouts): e.g.
-        * LASSO linear regression on continuous T: `T ~ X` (where X includes S and possible parents).
-    * Use stability selection (repeat on bootstraps) to get a robust set of candidate parents for T.
-    * Rationale: this is fast and gives a sparse parent set that narrows graph search space.
+3. **Mediator test (to detect indirectness)**
+* If S→T is strong but on conditioning on M (putative mediator) the effect vanishes: suggests S→M→T rather than S→T direct. Practically compute difference of `eff` when rows with M active/inhibited are considered separately.
 
-    5. **Causal structure learning that supports interventions**
-    * Use causal discovery algorithm that explicitly handles interventions (so you exploit DA rows):
-        * If using constraint-based: PC nd parents invariant across interventions.
-    * These algorithms produce edges consistent with interventional data and provide a high-quality candidate net.
+4. **Per-node regularized regression (parent selection)**
+* For each node T fit a predictive model using available variables (stimuli, inhibitors, other readouts): e.g.
+    * LASSO linear regression on continuous T: `T ~ X` (where X includes S and possible parents).
+* Use stability selection (repeat on bootstraps) to get a robust set of candidate parents for T.
+* Rationale: this is fast and gives a sparse parent set that narrows graph search space.
 
-    6. **Use logic/biological constraints to prune**
-    * Use the prior PKN to guide the search space and improve efficiency.
+5. **Causal structure learning that supports interventions**
+* Use causal discovery algorithm that explicitly handles interventions (so you exploit DA rows):
+    * If using constraint-based: PC nd parents invariant across interventions.
+* These algorithms produce edges consistent with interventional data and provide a high-quality candidate net.
 
-    7. **Validation & interpretability**
-    * For each proposed new edge, compute counterfactual check: does removing that edge make model predictions significantly worse on held-out interventions?
-    * Report edges with effect sizes, p-values (bootstrap), and whether they are supported by the intervention mediator tests.
+6. **Use logic/biological constraints to prune**
+* Use the prior PKN to guide the search space and improve efficiency.
+
+7. **Validation & interpretability**
+* For each proposed new edge, compute counterfactual check: does removing that edge make model predictions significantly worse on held-out interventions?
+* Report edges with effect sizes, p-values (bootstrap), and whether they are supported by the intervention mediator tests.
 
 compare the attractors:
 ```txt
