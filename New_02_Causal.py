@@ -905,7 +905,7 @@ class PKNReconstruction:
         # Generate final report
         results = self.generate_report()
 
-        save_as_bnet(results['final_graph'], "output/OwnMethod.bnet")
+        save_as_bnet(results['final_graph'], "output/causal.bnet")
         return results
 
 
@@ -924,7 +924,7 @@ if __name__ == "__main__":
     from tools.comparison import AttractorAnalysis
     ori_primes = "data/ToyModel/ToyModel.bnet"
     # compared_bnet = "data/ToyModel/ToyModel.bnet"
-    compared_bnet = "output/OwnMethod.bnet"
+    compared_bnet = "output/causal.bnet"
     analysis = AttractorAnalysis(ori_primes, compared_bnet)
     results = analysis.comparison()
     print(results)
