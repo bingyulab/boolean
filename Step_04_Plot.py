@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 import glob
 import argparse
@@ -64,29 +63,8 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.tight_layout()
     fig.savefig(output_dir / 'core_similarity_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-                
-    # Create figure 2: Performance summary heatmap
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
-    # Calculate average performance for each method across all change percentages
-    performance_summary = df.groupby('method')[['jaccard', 'hamming', 'jaccard_topology',
-                                                'composite_score', 'f1_score', 'precision', 'recall']].mean()
-
-    sns.heatmap(
-        performance_summary.T, annot=True, fmt='.3f',
-        cmap='RdYlBu_r', center=0.5, annot_kws={'color': 'black', 'fontsize': 9},  
-        cbar_kws={'label': 'Performance Score'},  
-        linewidths=0.5,  linecolor='gray',   
-        ax=ax
-    )
-    ax.set_title(f'Average Performance Summary Across All Metrics of {dataset_name}', fontsize=14, fontweight='bold')
-    ax.set_xlabel('Methods')
-    ax.set_ylabel('Metrics')
-    plt.tight_layout()
-    fig.savefig(output_dir / 'performance_summary_heatmap.png', dpi=300, bbox_inches='tight')
-    plt.close(fig)
-        
-    # Create figure 3: Runtime comparison
+                        
+    # Create figure 2: Runtime comparison
     if 'total_time' in df.columns:      
         fig, ax = plt.subplots(figsize=(8, 6))  
         
@@ -105,7 +83,7 @@ def create_comparison_plots(df, dataset_name='toy'):
         plt.savefig(output_dir / 'runtime_comparison.png', dpi=300, bbox_inches='tight')
         plt.close()
     
-    # Create figure 4: Robustness analysis (performance degradation)    
+    # Create figure 3: Robustness analysis (performance degradation)    
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
@@ -137,7 +115,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.savefig(output_dir / 'robustness_analysis.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Create figure 5: Number of reconstruct attractors
+    # Create figure 4: Number of reconstruct attractors
     fig, ax = plt.subplots(figsize=(8, 6))
 
     for method in methods:

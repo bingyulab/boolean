@@ -95,11 +95,11 @@ class CaspoOptimizer:
         self.sif_file = os.path.join(self.input_path, sif_name)
         self.data_file = os.path.join(self.input_path, rdata_name)
         self.midas_file = os.path.join(self.input_path, midas_name)
-        self.output_file = os.path.join("output/caspo", self.dataset, self.filename)       
-        
-        self.GD_MODEL = os.path.join("data", base_name, bnet_name)
-        self.GD_MODEL_SIF = os.path.join("data", base_name, sif_name)
-        
+        self.output_file = os.path.join("output/caspo", self.dataset, self.filename)
+
+        self.GD_MODEL = os.path.join("output/caspo", self.dataset, "0_Modified", f"OPT_{self.dataset}.bnet")
+        self.GD_MODEL_SIF = os.path.join("output/caspo", self.dataset, "0_Modified", f"OPT_{self.dataset}.sif")
+
         if not os.path.exists(self.output_file):
             os.makedirs(self.output_file, exist_ok=True) 
             

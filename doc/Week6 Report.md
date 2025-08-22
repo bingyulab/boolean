@@ -110,15 +110,11 @@ Proposed ideas to allow the PKN to be learned or corrected from experiments
 * Report edges with effect sizes, p-values (bootstrap), and whether they are supported by the intervention mediator tests.
 
 compare the attractors:
-```txt
-# Own method:
-jaccard   hamming  precision  recall  f1_score  ...  common_nodes  orig_nodes  recon_nodes  
-0.795455  0.795455   0.763158   0.725   0.74359  ...            11          15           13       
-
-# GA
-jaccard   hamming  precision  recall  f1_score  ...  common_nodes  orig_nodes  recon_nodes  
-0.729167  0.729167   0.787879    0.65  0.712329  ...            12          15           12          
-```
+| method | jaccard | hamming | precision | recall | f1_score | common_nodes | orig_nodes | recon_nodes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Causal method | 0.795455 | 0.795455 | 0.763158 | 0.725 | 0.74359 | 11 | 15 | 13 |
+| Bayesian method | 0.75 | 0.75 | 0.772727 | 0.425 | 0.548387 | 7 | 15 | 7 |
+| GA | 0.729167 | 0.729167 | 0.787879 | 0.65 | 0.712329 | 12 | 15 | 12 |
 
 #### **Hybrid Bayesian Network Learning** 
 You're absolutely right! Let me fix the inhibitor naming issue and explain the method clearly.Now let me explain the **Hybrid Bayesian Network Learning** method in detail:
@@ -238,6 +234,7 @@ import pyboolnet.attractors as Attractors
 import pyboolnet.basins_of_attraction as Basins
 import pyboolnet.state_transition_graphs as STGs
 ori_file = "data/ToyModel/ToyModel.bnet"
+cand_file = "data/ToyModel/50_Modified/ToyModel.bnet"
 cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
 ori_prime = FileExchange.bnet2primes(ori_file)
 cand_prime = FileExchange.bnet2primes(cand_file)

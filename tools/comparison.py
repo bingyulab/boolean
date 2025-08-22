@@ -19,6 +19,13 @@ def limit_float(x, nbit=2):
         return round(x, nbit)
     return x
 
+def get_regulators(node_rules):
+    """Extract set of regulators from prime rules of a node."""
+    regs = set()
+    for conjuncts in node_rules:
+        for term in conjuncts:
+            regs.update(term.keys())
+    return regs
 
 class AttractorAnalysis:
     def __init__(self, ori_bnet: str, compared_bnet):
@@ -39,8 +46,31 @@ class AttractorAnalysis:
 
     @staticmethod
     def load_bnet(bnet_file):
-        return FileExchange.bnet2primes(bnet_file)
+        primes = FileExchange.bnet2primes(bnet_file)
+        cleaned_prime = AttractorAnalysis.refine_bnet(primes)
+        return cleaned_prime
 
+    @staticmethod
+    def refine_bnet(prime):
+        # Filter out nodes with only self as regulator
+        cleaned_prime = {}
+        for node, rules in prime.items():
+            regulators = get_regulators(rules)
+            if regulators == {node}:  # only self-loop
+                # check if node appears in other nodes' regulators
+                appears_elsewhere = any(
+                    node in get_regulators(other_rules)
+                    for other_node, other_rules in prime.items()
+                    if other_node != node
+                )
+                if appears_elsewhere:
+                    cleaned_prime[node] = rules  # keep because it's used elsewhere
+                else:
+                    print(f"Removing isolated self-loop node: {node}")
+            else:
+                cleaned_prime[node] = rules
+        return cleaned_prime
+    
     @staticmethod
     def compute_attractors(primes):       
         import logging 
@@ -96,17 +126,20 @@ class AttractorComparison:
     """
 
     def __init__(self, ori_primes, original_attractors, recon_primes, 
-                 reconstructed_attractors, basin_weight=0.3):
+                 reconstructed_attractors, basin_weight=0.3, strategy="top_k"):
         self.ori_primes = ori_primes
         self.recon_primes = recon_primes
         self.basin_weight = basin_weight  # Weight for basin size consideration        
         
         self.recon_total = len(reconstructed_attractors)
         self.original_attractors = original_attractors
-        self.reconstructed_attractors = self._select_attractors_for_comparison(
-            reconstructed_attractors, len(original_attractors)
-        )
-        
+        if strategy == 'top_k':
+            self.reconstructed_attractors = self._select_attractors_for_comparison(
+                reconstructed_attractors, len(original_attractors)
+            )
+        else:
+            self.reconstructed_attractors = reconstructed_attractors
+            
         # Get node sets
         self.orig_nodes = self._get_nodes_from_attractors(self.original_attractors)
         self.recon_nodes = self._get_nodes_from_attractors(self.reconstructed_attractors)
@@ -176,7 +209,7 @@ class AttractorComparison:
         
         self.orig_enhanced = np.array(self.orig_enhanced)
         self.recon_enhanced = np.array(self.recon_enhanced)
-    
+
     def _compute_pairwise_similarity(self, vec1, vec2, similarity_type='jaccard'):
         """
         Compute similarity between two vectors handling NaN values properly.
@@ -394,7 +427,8 @@ class AttractorComparison:
     
     
 if __name__ == "__main__":
-    ori_primes = "data/ToyModel/ToyModel.bnet"
+    # ori_primes = "data/ToyModel/ToyModel.bnet"
+    ori_primes = "output/cellnopt/ToyModel/0_Modified/ga/OPT_ToyModel.bnet"
     # compared_bnet = "data/ToyModel/ToyModel.bnet"
     # compared_bnet = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
     compared_bnet = "output/cellnopt/ToyModel/90_Modified/ga/OPT_ToyModel.bnet"

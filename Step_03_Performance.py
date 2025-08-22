@@ -279,13 +279,16 @@ class OptimizedNetworkRunner:
     def _evaluate_optimization_results(self, task_config: TaskConfig, output_path: str) -> Optional[Dict[str, Any]]:
         """Evaluate optimization results using attractor analysis."""
         try:
-            dataset_name, sif_name, _, _, bnet_name, _ = dataset_map[task_config.dataset]
+            dataset_name, _, _, _, _, _ = dataset_map[task_config.dataset]
             
             # Paths for evaluation
             opt_bnet = os.path.join(output_path, f"OPT_{dataset_name}.bnet")
             opt_sif = os.path.join(output_path, f"OPT_{dataset_name}.sif")
-            gd_model = os.path.join("data", dataset_name, bnet_name)
-            gd_sif = os.path.join("data", dataset_name, sif_name)
+            
+            tmp = output_path.replace("0_Modified" if task_config.change_percent == 0 
+                          else f"{task_config.change_percent * 100:.0f}_Modified", "0_Modified")
+            gd_model = os.path.join(tmp, f"OPT_{dataset_name}.bnet")
+            gd_sif = os.path.join(tmp, f"OPT_{dataset_name}.sif")
             
             if not all(os.path.exists(f) for f in [opt_bnet, opt_sif, gd_model, gd_sif]):
                 logger.warning(f"Missing files for evaluation: {task_config.dataset}")
