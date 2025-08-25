@@ -480,6 +480,16 @@ def run_parallel_analysis(dataset: str, interval: int = 10, iteration: int = 1,
     tasks = create_task_configs(dataset, interval, iteration, methods)
     logger.info(f"Created {len(tasks)} optimization tasks")
 
+    # Run based model (zero perturbation)    
+    results = []
+    based_tasks = [task for task in tasks if task.change_percent == 0]
+    tasks = [task for task in tasks if task.change_percent > 0]
+    for task in based_tasks:
+        logger.info(f"Running: {task.dataset} {task.method} {task.change_percent:.1%}")
+        result = run_single_task(task, PreprocessingNetwork=PreprocessingNetwork)
+        if result:
+            results.append(result)
+
     # Separate ILP tasks from others for better parallelization
     ilp_tasks = [task for task in tasks if task.method.lower() == 'ilp']
     non_ilp_tasks = [task for task in tasks if task.method.lower() != 'ilp']  
@@ -487,7 +497,6 @@ def run_parallel_analysis(dataset: str, interval: int = 10, iteration: int = 1,
     
     # Run optimization tasks in parallel
     logger.info("Step 3: Running optimizations...")
-    results = []
     # Adjust max_workers for non-ILP tasks (ILP runs sequentially anyway)
     non_ilp_workers = max_workers if not ilp_tasks else max(1, max_workers - 1)
     

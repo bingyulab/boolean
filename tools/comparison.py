@@ -6,10 +6,10 @@ import pandas as pd
 from scipy.optimize import linear_sum_assignment
 from rpy2.robjects.vectors import FloatVector
 from scipy.stats import entropy
+import logging
 
 
 def limit_float(x, nbit=2):
-    # print(f"Limiting float: {x}, type: {type(x)}")
     if isinstance(x, FloatVector):
         x = float(x[0])
     else:
@@ -19,6 +19,7 @@ def limit_float(x, nbit=2):
         return round(x, nbit)
     return x
 
+
 def get_regulators(node_rules):
     """Extract set of regulators from prime rules of a node."""
     regs = set()
@@ -26,6 +27,66 @@ def get_regulators(node_rules):
         for term in conjuncts:
             regs.update(term.keys())
     return regs
+
+
+def levenshtein_distance(s1, s2):
+    """
+    Compute Levenshtein (edit) distance between two sequences.
+    Handles NaN values by treating them as a special character.
+    """
+    # Convert to strings, treating NaN as special symbol
+    str1 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s1])
+    str2 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s2])
+    
+    m, n = len(str1), len(str2)
+    
+    # Create DP matrix
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    
+    # Initialize base cases
+    for i in range(m + 1):
+        dp[i][0] = i
+    for j in range(n + 1):
+        dp[0][j] = j
+    
+    # Fill DP matrix
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if str1[i-1] == str2[j-1]:
+                dp[i][j] = dp[i-1][j-1]
+            else:
+                dp[i][j] = 1 + min(
+                    dp[i-1][j],    # deletion
+                    dp[i][j-1],    # insertion
+                    dp[i-1][j-1]   # substitution
+                )
+    
+    return dp[m][n]
+
+
+def longest_common_subsequence(s1, s2):
+    """
+    Compute Longest Common Subsequence length between two sequences.
+    Handles NaN values by treating them as a special character.
+    """
+    # Convert to strings, treating NaN as special symbol
+    str1 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s1])
+    str2 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s2])
+    
+    m, n = len(str1), len(str2)
+    
+    # Create DP matrix
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    
+    # Fill DP matrix
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if str1[i-1] == str2[j-1]:
+                dp[i][j] = dp[i-1][j-1] + 1
+            else:
+                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+    
+    return dp[m][n]
 
 class AttractorAnalysis:
     def __init__(self, ori_bnet: str, compared_bnet):
@@ -41,8 +102,6 @@ class AttractorAnalysis:
         """
         self.ori_bnet = ori_bnet
         self.compared_bnet = compared_bnet
-        self.ori_bnet = ori_bnet
-        self.compared_bnet = compared_bnet
 
     @staticmethod
     def load_bnet(bnet_file):
@@ -54,6 +113,7 @@ class AttractorAnalysis:
     def refine_bnet(prime):
         # Filter out nodes with only self as regulator
         cleaned_prime = {}
+        removed_nodes = []
         for node, rules in prime.items():
             regulators = get_regulators(rules)
             if regulators == {node}:  # only self-loop
@@ -66,14 +126,15 @@ class AttractorAnalysis:
                 if appears_elsewhere:
                     cleaned_prime[node] = rules  # keep because it's used elsewhere
                 else:
+                    removed_nodes.append(node)
                     print(f"Removing isolated self-loop node: {node}")
             else:
                 cleaned_prime[node] = rules
+        print(f"Removed {len(removed_nodes)} isolated nodes: {removed_nodes}")
         return cleaned_prime
     
     @staticmethod
-    def compute_attractors(primes):       
-        import logging 
+    def compute_attractors(primes):  
         logging.disable(logging.INFO)
         result = Attractors.compute_attractors(primes, "synchronous") 
         logging.disable(logging.NOTSET)
@@ -85,8 +146,7 @@ class AttractorAnalysis:
         return primes, [x['state'] for x in attrs['attractors']]
     
     @staticmethod
-    def get_basin_sizes(primes, state):         
-        import logging 
+    def get_basin_sizes(primes, state):   
         logging.disable(logging.INFO)
         weak = Basins.weak_basin(primes, "asynchronous", state)
         logging.disable(logging.NOTSET)
@@ -152,7 +212,10 @@ class AttractorComparison:
         # Compute basin sizes for weighting
         self.orig_basins = self._compute_basin_sizes(ori_primes, self.original_attractors)
         self.recon_basins = self._compute_basin_sizes(recon_primes, self.reconstructed_attractors)
-            
+        
+        # Precompute all similarity matrices for efficiency
+        self._precompute_similarity_matrices()
+        
     def _compute_basin_sizes(self, primes, attractors):
         weight = [AttractorAnalysis.get_basin_sizes(primes, att['str']) for att in attractors]        
         weights = np.array(weight)
@@ -168,7 +231,10 @@ class AttractorComparison:
         basin_sizes = basin_sizes / np.max(basin_sizes) if np.max(basin_sizes) > 0 else basin_sizes
         # Get indices of top K attractors
         top_indices = np.argsort(basin_sizes)[::-1][:max_count]
-        return [attractors[i] for i in top_indices]            
+        selected_attractors = [attractors[i] for i in sorted(top_indices)]
+        print(f"Selected top {max_count} attractors from {len(attractors)} total attractors")
+        print(f"Selected basin sizes: {[basin_sizes[i] for i in top_indices]}")
+        return selected_attractors
     
     def _get_nodes_from_attractors(self, attractors):
         """Get all unique nodes from attractors."""
@@ -234,7 +300,26 @@ class AttractorComparison:
             matches = np.sum(v1_masked == v2_masked)
             total = len(v1_masked)
             return matches / total if total > 0 else 0.0
+        
+        elif similarity_type == 'levenshtein':
+            # Levenshtein similarity (1 - edit_distance/max_length)
+            edit_dist = levenshtein_distance(vec1, vec2)
+            max_len = len(vec1)
+            return 1 - (edit_dist / max_len) if max_len > 0 else 0.0
+        
+        elif similarity_type == 'lcs':
+            # LCS similarity (lcs_length / max_length)
+            lcs_len = longest_common_subsequence(vec1, vec2)
+            max_len = max(len(vec1), len(vec2))
+            return lcs_len / max_len if max_len > 0 else 0.0
 
+    def _precompute_similarity_matrices(self):
+        """Precompute all similarity matrices for efficiency."""
+        self.similarity_matrices = {}
+        metrics = ['jaccard', 'hamming', 'levenshtein', 'lcs']
+        for metric in metrics:
+            self.similarity_matrices[metric] = self._compute_similarity_matrix(metric)
+        
     def _compute_similarity_matrix(self, similarity_type='jaccard'):
         """Compute similarity matrix between all pairs of attractors."""
         n_orig = len(self.orig_enhanced)
@@ -256,11 +341,7 @@ class AttractorComparison:
         """
         Compute metrics based on optimal bipartite matching.
         This addresses the third problem by finding best matches first.
-        """
-        # Compute similarity matrices for different metrics
-        jaccard_matrix = self._compute_similarity_matrix('jaccard')
-        hamming_matrix = self._compute_similarity_matrix('hamming')
-        
+        """        
         n_orig = len(self.original_attractors)
         n_recon = len(self.reconstructed_attractors)
         
@@ -268,30 +349,63 @@ class AttractorComparison:
             return self._empty_results()
         
         # Use Jaccard for matching (most robust for categorical data)
+        jaccard_matrix = self.similarity_matrices['jaccard']
         cost_matrix = 1 - jaccard_matrix
         
-        # Handle rectangular matrices for Hungarian algorithm
-        if n_orig != n_recon:
-            # Pad with high costs to handle different sizes
-            max_dim = max(n_orig, n_recon)
-            padded_cost = np.full((max_dim, max_dim), 2.0)  # Cost > 1
-            padded_cost[:n_orig, :n_recon] = cost_matrix
-            row_ind, col_ind = linear_sum_assignment(padded_cost)
-            
-            # Filter out padding matches
-            valid_matches = [(i, j) for i, j in zip(row_ind, col_ind) 
-                           if i < n_orig and j < n_recon]
-        else:
+        # Enhanced Hungarian algorithm with proper rectangular matrix handling
+        valid_matches = self._solve_assignment_problem(cost_matrix, n_orig, n_recon)
+        
+        if not valid_matches:
+            return self._empty_results()
+        
+        # Compute metrics for all similarity types
+        results = {}
+        metric_names = ['jaccard', 'hamming', 'levenshtein', 'lcs']
+
+        for metric in metric_names:
+            similarity_matrix = self.similarity_matrices[metric]
+            matched_scores = [similarity_matrix[i, j] for i, j in valid_matches]
+            results[metric] = np.mean(matched_scores) if matched_scores else 0.0
+        
+        # Compute precision, recall, F1 for optimal matches
+        precision, recall, f1 = self._compute_classification_metrics(valid_matches)
+        
+        results.update({
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1,
+            'total_matches': len(valid_matches),
+            'orig_count': n_orig,
+            'recon_count': n_recon
+        })
+        
+        return results
+
+    def _solve_assignment_problem(self, cost_matrix, n_orig, n_recon):
+        """
+        Solve assignment problem handling rectangular matrices optimally.
+        """
+        if n_orig == n_recon:
+            # Square matrix - direct assignment
             row_ind, col_ind = linear_sum_assignment(cost_matrix)
-            valid_matches = list(zip(row_ind, col_ind))
+            return list(zip(row_ind, col_ind))
         
-        # Compute metrics for matched pairs
-        matched_jaccard = []
-        matched_hamming = []
+        elif n_orig < n_recon:
+            # More reconstructed than original - each original gets best match
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            return [(i, j) for i, j in zip(row_ind, col_ind)]
         
-        for i, j in valid_matches:
-            matched_jaccard.append(jaccard_matrix[i, j])
-            matched_hamming.append(hamming_matrix[i, j])
+        else:
+            # More original than reconstructed - each reconstructed gets best match
+            # Transpose the problem
+            cost_matrix_T = cost_matrix.T
+            col_ind, row_ind = linear_sum_assignment(cost_matrix_T)
+            return [(i, j) for i, j in zip(row_ind, col_ind)]
+
+    def _compute_classification_metrics(self, valid_matches):
+        """Compute precision, recall, F1 for matched attractors."""
+        if not valid_matches:
+            return 0.0, 0.0, 0.0
         
         true_positives = 0
         false_positives = 0
@@ -323,16 +437,7 @@ class AttractorComparison:
         recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
-        return {
-            'jaccard': np.mean(matched_jaccard) if matched_jaccard else 0.0,
-            'hamming': np.mean(matched_hamming) if matched_hamming else 0.0,
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1,
-            'total_matches': len(valid_matches),
-            'orig_count': n_orig,
-            'recon_count': n_recon
-        }
+        return precision, recall, f1
 
     def compute_structural_similarity(self):
         """
@@ -382,7 +487,7 @@ class AttractorComparison:
     def _empty_results(self):
         """Return empty results when comparison is not possible."""
         return {
-            'jaccard': 0.0, 'hamming': 0.0, 
+            'jaccard': 0.0, 'hamming': 0.0, 'levenshtein': 0.0, 'lcs': 0.0,
             'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0,
             'high_quality_matches': 0, 'total_matches': 0,
             'orig_count': len(self.original_attractors),
@@ -413,14 +518,20 @@ class AttractorComparison:
         
         # Compute composite score with balanced weighting
         composite_score = (
-            0.3 * results['jaccard'] +
-            0.2 * results['hamming'] +
-            0.3 * results['f1_score'] +
-            0.2 * results['structural_score']
+            0.2 * results['jaccard'] +
+            0.15 * results['hamming'] +
+            0.15 * results['levenshtein'] +
+            0.15 * results['lcs'] +
+            0.2 * results['f1_score'] +
+            0.15 * results['structural_score']
         )
         
         results['composite_score'] = composite_score
         
+        results['best_similarity_metric'] = max(
+            ['jaccard', 'hamming', 'levenshtein', 'lcs'],
+            key=lambda x: results[x]
+        )
         if return_df:
             return pd.DataFrame([results])
         return results     
@@ -435,3 +546,12 @@ if __name__ == "__main__":
     analysis = AttractorAnalysis(ori_primes, compared_bnet)
     results = analysis.comparison()
     print(results)
+    
+    results_dict = results.iloc[0].to_dict()
+
+    print(f"\nSimilarity Metrics Comparison:")
+    print(f"Jaccard: {results_dict['jaccard']:.3f}")
+    print(f"Hamming: {results_dict['hamming']:.3f}")
+    print(f"Levenshtein: {results_dict['levenshtein']:.3f}")
+    print(f"LCS: {results_dict['lcs']:.3f}")
+    print(f"Best metric: {results_dict['best_similarity_metric']}")

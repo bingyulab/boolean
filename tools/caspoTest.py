@@ -172,11 +172,14 @@ class CaspoOptimizer:
         print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
         
         # Quick similarity check
-        sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)
-        jaccard = sif_analyzer.jaccard_similarity()
+        sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)        
+        report = sif_analyzer.comprehensive_similarity_report()     
 
-        print(f"Jaccard similarity between SIF networks: {jaccard}")
-        results['jaccard_topology'] = jaccard
+        results['edge_jaccard_topology'] = limit_float(report['basic_metrics']['jaccard_edge_similarity'])
+        results['node_jaccard_topology'] = limit_float(report['basic_metrics']['node_overlap_similarity'])
+        results['graph_edit_distance'] = limit_float(report['basic_metrics']['graph_edit_distance'])
+        results['degree_distribution'] = limit_float(report['degree_distribution']['similar'])
+        results['overall_similarity'] = limit_float(report['overall_similarity_score'])
         return results    
     
     def run(self):

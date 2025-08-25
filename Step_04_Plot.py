@@ -48,23 +48,48 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     # Define key metrics to focus on
     key_metrics = {
-        'Similarity Metrics': ['jaccard', 'hamming', 'composite_score'],
-        'Coverage Metrics': ['precision', 'recall', 'f1_score'],
+        'Similarity Metrics': ['jaccard', 'hamming', 'lcs', 'levenshtein'],
+        'Coverage Metrics': ['precision', 'recall', 'f1_score', 'structural_score'],
+        'Topology Metrics': ['node_jaccard_topology', 'edge_jaccard_topology', 
+                             'graph_edit_distance', 'degree_distribution']
     }
-    
-    # Create figure 1: Core similarity metrics comparison
+    # Create figure 1: Attractor similarity metrics comparison
     fig, axes = plt.subplots(2, 2, figsize=(8, 6))
-    fig.suptitle(f'Core Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
+    fig.suptitle(f'Attractor Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
     plot_metric(df, axes[0, 0], 'jaccard', 'Jaccard Similarity Performance', 'o')
     plot_metric(df, axes[0, 1], 'hamming', 'Hamming Similarity Performance', 's')
-    plot_metric(df, axes[1, 0], 'jaccard_topology', 'Jaccard Topology Performance', '^')
-    plot_metric(df, axes[1, 1], 'f1_score', 'F1 Score Performance', 'D')
+    plot_metric(df, axes[1, 0], 'lcs', 'LCS Similarity Performance', '^')
+    plot_metric(df, axes[1, 1], 'levenshtein', 'Levenshtein Similarity Performance', 'D')
     plt.tight_layout()
-    fig.savefig(output_dir / 'core_similarity_metrics.png', dpi=300, bbox_inches='tight')
+    fig.savefig(output_dir / 'attractors_similarity_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-                        
-    # Create figure 2: Runtime comparison
+
+    # Create figure 2: Attractor coverage metrics comparison
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig.suptitle(f'Attractor Coverage Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
+
+    plot_metric(df, axes[0, 0], 'precision', 'Precision Performance', 'o')
+    plot_metric(df, axes[0, 1], 'recall', 'Recall Performance', 's')
+    plot_metric(df, axes[1, 0], 'f1_score', 'F1 Score Performance', '^')
+    plot_metric(df, axes[1, 1], 'structural_score', 'Structural Score Performance', 'D')
+    plt.tight_layout()
+    fig.savefig(output_dir / 'attractors_coverage_metrics.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+                 
+    # Create figure 3: Topology similarity metrics comparison
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig.suptitle(f'Topology Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
+
+    plot_metric(df, axes[0, 0], 'node_jaccard_topology', 'Node Jaccard Topology Performance', 'o')
+    plot_metric(df, axes[0, 1], 'edge_jaccard_topology', 'Edge Jaccard Topology Performance', 's')
+    plot_metric(df, axes[1, 0], 'graph_edit_distance', 'Graph Edit Distance Performance', '^')
+    plot_metric(df, axes[1, 1], 'degree_distribution', 'Degree Distribution Performance', 'D')
+    plt.tight_layout()
+    fig.savefig(output_dir / 'topology_similarity_metrics.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+           
+    # Create figure 4: Runtime comparison
     if 'total_time' in df.columns:      
         fig, ax = plt.subplots(figsize=(8, 6))  
         
@@ -83,11 +108,13 @@ def create_comparison_plots(df, dataset_name='toy'):
         plt.savefig(output_dir / 'runtime_comparison.png', dpi=300, bbox_inches='tight')
         plt.close()
     
-    # Create figure 3: Robustness analysis (performance degradation)    
+    # Create figure 5: Robustness analysis (performance degradation)    
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
-    metrics_to_analyze = ['composite_score', 'f1_score', 'jaccard', 'hamming', 'jaccard_topology']
+    metrics_to_analyze = ['f1_score', 'jaccard', 'hamming', 'lcs', 'levenshtein', 
+                          'node_jaccard_topology', 'edge_jaccard_topology', 
+                          'graph_edit_distance']
 
     for i, method in enumerate(methods):
         ax_sub = axes[i // 2, i % 2]
@@ -115,7 +142,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.savefig(output_dir / 'robustness_analysis.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Create figure 4: Number of reconstruct attractors
+    # Create figure 6: Number of reconstruct attractors
     fig, ax = plt.subplots(figsize=(8, 6))
 
     for method in methods:
@@ -135,10 +162,8 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     print(f"All plots have been saved to the '{dataset_name}' directory!")
     print(f"Generated plots:")
-    print(f"  - core_similarity_metrics.png")
-    print(f"  - coverage_precision_metrics.png") 
-    print(f"  - performance_summary_heatmap.png")
-    print(f"  - jaccard_topology.png")
+    print(f"  - attractors_similarity_metrics.png")
+    print(f"  - topology_similarity_metrics.png") 
     if 'total_time' in df.columns:
         print(f"  - runtime_comparison.png")
     print(f"  - robustness_analysis.png")
@@ -184,9 +209,9 @@ def load_and_plot_results(dataset_name='toy'):
     print(full_df.head())
     
     avg_columns = [
-        'jaccard', 'hamming', 'composite_score',
-        'precision', 'recall', 'f1_score', 'recon_total',
-        'total_time', 'jaccard_topology'
+        'jaccard', 'hamming', 'lcs', 'levenshtein',
+        'f1_score', 'recon_total', 'total_time', 
+        'node_jaccard_topology', 'edge_jaccard_topology',  'graph_edit_distance'
     ]
 
     group_columns = ['method', 'change_percent']

@@ -1,8 +1,8 @@
 import pandas as pd
 import networkx as nx
 import numpy as np
-from collections import defaultdict
-from scipy.stats import ks_2samp
+from collections import defaultdict, Counter
+from scipy.stats import ks_2samp, pearsonr, spearmanr
 import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple, Any
 from tools.comparison import limit_float
@@ -17,13 +17,11 @@ class BooleanNetworkGraph(nx.MultiDiGraph):
     @classmethod
     def from_tuples(cls, tuples):
         """
-        Creates a graph from tuples (source, target, sign)
-        
+        Creates a graph from tuples (source, target, sign)        
         Parameters
         ----------
         tuples : iterable[(str,str,int)]
-            Tuples describing signed directed edges
-            
+            Tuples describing signed directed edges            
         Returns
         -------
         BooleanNetworkGraph
@@ -151,10 +149,9 @@ class BooleanNetworkGraph(nx.MultiDiGraph):
                 'std_degree': np.std(degrees),
                 'max_degree': max(degrees),
                 'min_degree': min(degrees)
-            })
-        
+            })        
         return features
-
+    
 
 class NetworkTopologyAnalyzer:
     """
