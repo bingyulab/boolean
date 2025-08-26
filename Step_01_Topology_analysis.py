@@ -1,10 +1,8 @@
 import pandas as pd
 import networkx as nx
 import numpy as np
-from collections import defaultdict, Counter
-from scipy.stats import ks_2samp, pearsonr, spearmanr
+from scipy.stats import ks_2samp
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple, Any
 from tools.comparison import limit_float
 
 
@@ -113,7 +111,7 @@ class BooleanNetworkGraph(nx.MultiDiGraph):
             'out_degree': dict(simple_graph.out_degree()),
             'betweenness': nx.betweenness_centrality(simple_graph),
             'closeness': nx.closeness_centrality(simple_graph),
-            'eigenvector': nx.eigenvector_centrality(simple_graph, max_iter=1000),
+            # 'eigenvector': nx.eigenvector_centrality(simple_graph, max_iter=1000),
             'pagerank': nx.pagerank(simple_graph)
         }
         
@@ -134,10 +132,10 @@ class BooleanNetworkGraph(nx.MultiDiGraph):
             'num_nodes': simple_graph.number_of_nodes(),
             'num_edges': simple_graph.number_of_edges(),
             'density': nx.density(simple_graph),
-            'is_connected': nx.is_weakly_connected(simple_graph),
+            # 'is_connected': nx.is_weakly_connected(simple_graph),
             'num_strongly_connected_components': nx.number_strongly_connected_components(simple_graph),
             'num_weakly_connected_components': nx.number_weakly_connected_components(simple_graph),
-            'average_clustering': nx.average_clustering(simple_graph.to_undirected()),
+            # 'average_clustering': nx.average_clustering(simple_graph.to_undirected()),
             'transitivity': nx.transitivity(simple_graph.to_undirected())
         }
         
@@ -225,7 +223,7 @@ class NetworkTopologyAnalyzer:
         degrees2 = [d for n, d in self.simple2.degree()]
         
         if not degrees1 or not degrees2:
-            return {'statistic': 1.0, 'pvalue': 0.0}
+            return {'statistic': 1.0, 'pvalue': 0.0, 'similar': False}
         
         ks_stat, p_value = ks_2samp(degrees1, degrees2)
         
@@ -409,10 +407,12 @@ if __name__ == "__main__":
     print("\n=== Reading from SIF Files ===")
     # Test reading from SIF files
     # sif_net1 = BooleanNetworkGraph.read_sif('data/ToyModel/ToyModel.sif')
-    # sif_net2 = BooleanNetworkGraph.read_sif('data/ToyModel/10_Modified/ToyModel.sif')
-    sif_net1 = BooleanNetworkGraph.read_sif('data/DREAMmodel/DreamModel.sif')
+    # sif_net1 = BooleanNetworkGraph.read_sif('output/caspo/ToyModel/0_Modified/OPT_ToyModel.sif')
+    sif_net1 = BooleanNetworkGraph.read_sif('output/meigo/ToyModel/0_Modified/VNS/OPT_ToyModel.sif')
+    # sif_net1 = BooleanNetworkGraph.read_sif('data/DREAMmodel/DreamModel.sif')
     # sif_net2 = BooleanNetworkGraph.read_sif('data/DREAMmodel/30_Modified/DreamModel.sif')
-    sif_net2 = BooleanNetworkGraph.read_sif('output/cellnopt/DREAMmodel/20_Modified/ga/OPT_DREAMmodel.sif')
+    sif_net2 = BooleanNetworkGraph.read_sif('output/caspo/ToyModel/60_Modified/OPT_ToyModel.sif')
+    sif_net2 = BooleanNetworkGraph.read_sif('output/meigo/ToyModel/80_Modified/VNS/OPT_ToyModel.sif')
     print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
     print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")
     

@@ -7,16 +7,16 @@ install:
 	Rscript Install/install.R
 
 test:
-	rm network_analysis.log
+	@if [ -f network_analysis.log ]; then rm network_analysis.log; fi
 	python Step_03_Performance.py 
 
 toy: 
-	rm network_analysis.log
+	@if [ -f network_analysis.log ]; then rm network_analysis.log; fi
 	python Step_03_Performance.py -p -d toy
 	python Step_04_Plot.py -d toy
 
 dream:
-	rm network_analysis.log
+	@if [ -f network_analysis.log ]; then rm network_analysis.log; fi
 	python Step_03_Performance.py -d dream -p
 	python Step_04_Plot.py -d dream
 

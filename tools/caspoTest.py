@@ -149,7 +149,7 @@ class CaspoOptimizer:
         convert_caspo_csv_format(df, os.path.join(self.output_file, f'OPT_{self.dataset}.bnet'))
         caspo_to_sif(df, os.path.join(self.output_file, f'OPT_{self.dataset}.sif'))
 
-    def evaluate_model(self, total_time):
+    def evaluate_model(self):
         print("Evaluating model...")
         fname = f"OPT_{self.dataset}.bnet"
         opt_fname = os.path.join(self.output_file, fname)
@@ -158,13 +158,12 @@ class CaspoOptimizer:
         AA = AttractorAnalysis(self.GD_MODEL, opt_fname)
         results = AA.comparison()
         
-        results['total_time']         = limit_float(total_time, 4)
         results['method']             = "Caspo"
         results['change_percent']     = limit_float(self.ChangePct)
         # results.to_csv(os.path.join(self.output_file, "results.csv"), index=False)
 
         opt_sif = os.path.join(self.output_file, f"OPT_{self.dataset}.sif")
-        print(f"Comparing original topology {self.GD_MODEL} with optimized topology {opt_sif}")
+        print(f"Comparing original topology {self.GD_MODEL_SIF} with optimized topology {opt_sif}")
         sif_net1 = BooleanNetworkGraph.read_sif(self.GD_MODEL_SIF)
         sif_net2 = BooleanNetworkGraph.read_sif(opt_sif)
         
@@ -203,7 +202,9 @@ class CaspoOptimizer:
         print("Weighted MSE: %.4f" % learner.networks.weighted_mse(dataset))
 
         self.save_stats(learner, dataset)
-        results = self.evaluate_model(total_time)
+        results = self.evaluate_model()
+        results['total_time']  = limit_float(total_time, 4)
+        results['mse'] = limit_float(learner.stats['optimum_mse'], 4)
         return results
         
 # Example usage:
@@ -211,7 +212,7 @@ if __name__ == "__main__":
     
     from tools.config import NetworkPerturbationConfig, AdaptiveParameterManager
     config = NetworkPerturbationConfig(
-        change_percent=0.8,
+        change_percent=0.3,
         size_adaptation_strength=2.0,
         generalization_focus=True
     )
@@ -219,4 +220,5 @@ if __name__ == "__main__":
     runner = CaspoOptimizer(
         dataset="toy", manager=manager
     )
-    runner.run()
+    results = runner.run()
+    print(results)

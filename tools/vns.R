@@ -312,7 +312,7 @@ run_vns_optimization <- function(dataset_name, vns_config, change_percent = 0.0,
     dataset = dataset_name,
     method = "VNS",
     change_percent = round(change_percent, 4),
-    training_score = round(Results_VNS$fbest, 4),
+    mse = round(Results_VNS$fbest, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )

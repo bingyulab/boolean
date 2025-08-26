@@ -706,138 +706,6 @@ runPerturbPipeline <- function(dataset      = "toy",
   message("BoolNet file written to: ", boolnet_fname)
   
   message("Modified model files saved to: ", output_file)
-
-  # 5) Prepare for k-fold cross-validation
-  message("Setting up k-fold cross-validation...")
-  
-  # Clean up model names (replace hyphens with underscores for compatibility)
-  mod_model$reacID <- gsub("-", "_", mod_model$reacID, fixed = TRUE)
-  mod_model$namesSpecies <- gsub("-", "_", mod_model$namesSpecies, fixed = TRUE)
-  rownames(mod_model$interMat) <- gsub("-", "_", rownames(mod_model$interMat), fixed = TRUE)
-  colnames(mod_model$interMat) <- gsub("-", "_", colnames(mod_model$interMat), fixed = TRUE)
-  rownames(mod_model$notMat) <- gsub("-", "_", rownames(mod_model$notMat), fixed = TRUE)
-  colnames(mod_model$notMat) <- gsub("-", "_", colnames(mod_model$notMat), fixed = TRUE)
-  
-  # Get the number of experimental samples
-  numSamples <- length(cnolist$namesCues)
-  nfold <- min(nfold, numSamples)  # Ensure nfold does not exceed number of samples
-  message(sprintf("Total samples for cross-validation: %d", numSamples))
-  message(sprintf("Creating %d-fold splits", nfold))
-
-  # 6) Create cross-validation splits
-  # This creates random partitions of your data for each run
-  cv_seed <- seed + 1000  # Use different seed for CV splits
-  set.seed(cv_seed)
-  message(sprintf("Using CV seed: %d", cv_seed))
-  # Create a random permutation of sample indices
-  permut <- sample(seq_len(numSamples))
-  
-  # Divide samples into nfold groups
-  # assign each position to one of nfold buckets as evenly as possible
-  fold_id <- cut(seq_along(permut),
-                breaks = nfold,
-                labels = FALSE)
-
-  # collect your splits
-  splits <- lapply(seq_len(nfold), function(k) {
-    permut[fold_id == k]
-  })
-  
-  # 7) Create subdirectories for each cross-validation fold
-  message("Creating cross-validation subdirectories...")
-  for (j in 1:nfold) {
-    # Create directory structure: cv_1, cv_2, cv_3, etc.
-    cv_dir <- file.path(output_file, paste0("cv_", j))
-    if (!dir.exists(cv_dir)) {
-      dir.create(cv_dir, recursive = TRUE)
-    }
-    
-    # Save seed information for reproducibility
-    seed_file <- file.path(cv_dir, "seed.txt")
-    if (!file.exists(seed_file)) {
-      cat(seed, file = seed_file)
-    }
-  }
-  
-  # 8) Create train/validation splits for each fold
-  message("Creating training and validation datasets for each fold...")
-  
-  for (j in 1:nfold) {
-    cv_dir <- file.path(output_file, paste0("cv_", j))
-    
-    # Get test indices for this fold (validation set)
-    testIndices <- splits[[j]]
-    # Training set includes all other samples
-    trainIndices <- setdiff(seq_len(numSamples), testIndices)
-
-    message(sprintf("Fold %d: %d training samples, %d validation samples",
-                    j, length(trainIndices), length(testIndices)))
-    
-    # Create separate CNOlist objects for training and validation
-    CNOlistTrain <- cnolist
-    CNOlistVal   <- cnolist
-
-    # Split the experimental conditions (cues, stimuli, inhibitors)
-    CNOlistTrain$valueCues       <- cnolist$valueCues[    trainIndices, , drop = FALSE]
-    CNOlistVal$valueCues         <- cnolist$valueCues[    testIndices,  , drop = FALSE]
-
-    CNOlistTrain$valueStimuli    <- cnolist$valueStimuli[ trainIndices, , drop = FALSE]
-    CNOlistVal$valueStimuli      <- cnolist$valueStimuli[ testIndices,  , drop = FALSE]
-
-    CNOlistTrain$valueInhibitors <- cnolist$valueInhibitors[trainIndices, , drop = FALSE]
-    CNOlistVal$valueInhibitors   <- cnolist$valueInhibitors[testIndices,  , drop = FALSE]
-
-
-    # Split the measurement signals for each time point
-    for (k in seq_along(cnolist$valueSignals)) {
-      CNOlistTrain$valueSignals[[k]]    <- cnolist$valueSignals[[k]][   trainIndices, , drop = FALSE]
-      CNOlistVal$valueSignals[[k]]      <- cnolist$valueSignals[[k]][   testIndices,  , drop = FALSE]
-      CNOlistTrain$valueVariances[[k]]  <- cnolist$valueVariances[[k]][ trainIndices, , drop = FALSE]
-      CNOlistVal$valueVariances[[k]]    <- cnolist$valueVariances[[k]][ testIndices,  , drop = FALSE]
-    }
-    
-    # Save the split datasets
-    train_file <- file.path(cv_dir, "CNOlist_train.RData")
-    val_file <- file.path(cv_dir, "CNOlist_val.RData")
-    if (!file.exists(train_file)) {
-      save(CNOlistTrain, file = train_file)
-    }
-    if (!file.exists(val_file)) {
-      save(CNOlistVal, file = val_file)
-    }
-
-    message(sprintf("Saved fold %d data to: %s", j, cv_dir))
-  }
-  
-  # 9) Save the split information for later reference
-  splits_file <- file.path(output_file, "splits.RData")
-  if (!file.exists(splits_file)) {
-    save(splits, file = splits_file)
-  }
-
-  # Create a summary of the cross-validation setup
-  cv_summary <- list(
-    dataset = dataset,
-    change_pct = change_pct,
-    nfold = nfold,
-    seed = seed,
-    numSamples = numSamples,
-    output_dir = output_file,
-    splits = splits
-  )
-  
-  summary_file <- file.path(output_file, "cv_summary.RData")
-  if (!file.exists(summary_file)) {
-    save(cv_summary, file = summary_file)
-  }
-  
-  
-  message("Cross-validation setup complete!")
-  message(sprintf("Main directory: %s", output_file))
-  message(sprintf("Created %d cross-validation folds", nfold))
-  message(sprintf("Each fold contains training and validation datasets"))
-  
-  return(cv_summary)
 }
 
 #--- Load required libraries -------------------------------------------------
@@ -849,8 +717,8 @@ suppressPackageStartupMessages({
 option_list <- list(
   make_option(c("-d", "--dataset"), type="character", default="toy",
               help="Path to original model RData or RDS file", metavar="FILE"),
-  make_option(c("-p", "--changePCT"), type="double", default=0.9,
-              help="Change percentage [default %default]", metavar="DOUBLE"),
+  # make_option(c("-p", "--changePCT"), type="double", default=0.9,
+  #             help="Change percentage [default %default]", metavar="DOUBLE"),
   make_option(c("-s", "--seed"), type="integer", default=44,
               help="Random seed [optional]", metavar="INT"),
   make_option(c("-k", "--k_fold"), type="integer", default=10,
@@ -868,9 +736,11 @@ message(sprintf("Random seed: %d", opt$seed))
 message(sprintf("Number of folds: %d", opt$k_fold))
 
 #--- Run the pipeline --------------------------------------------------------
-results <- runPerturbPipeline(
+for (k in seq(0.0, 0.9, by=0.1)) {
+  results <- runPerturbPipeline(
     dataset      = opt$dataset,
-    change_pct   = opt$changePCT,
+    change_pct   = k,
     seed         = opt$seed,
     nfold        = opt$k_fold
   )
+}

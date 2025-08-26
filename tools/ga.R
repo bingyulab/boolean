@@ -219,14 +219,9 @@ run_ga_optimization <- function(dataset_name, ga_config, change_percent = 0.0,
     dataset = dataset_name,
     method = "GA",
     change_percent = round(change_percent, 4),
-    training_score = round(opt_results$bScore, 4),
+    mse = round(opt_results$bScore, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
-    maxGens = ga_config$maxGens,
-    popSize = ga_config$popSize,
-    elitism = ga_config$elitism,
-    sizeFac = ga_config$sizeFac,
-    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    stringsAsFactors = FALSE
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
   
   # Save results to CSV

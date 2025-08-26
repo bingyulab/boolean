@@ -203,16 +203,9 @@ run_ilp_optimization <- function(dataset_name, ilp_config, change_percent = 0.0,
     dataset = dataset_name,
     method = "ILP",
     change_percent = round(change_percent, 4),
-    training_score = round(opt_results$bScore, 4),
+    mse = round(opt_results$bScore, 4),
     total_time = round(optimization_time[["elapsed"]], 4),
-    sizeFac = ilp_config$sizeFac,
-    mipGap = ilp_config$mipGap,
-    relGap = ilp_config$relGap,
-    timelimit = ilp_config$timelimit,
-    method_used = ilp_config$method,
-    num_solutions = ilp_config$numSolutions,
-    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-    stringsAsFactors = FALSE
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   )
   
   # Save results to CSV

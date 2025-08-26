@@ -233,9 +233,12 @@ import pyboolnet.interaction_graphs as IG
 import pyboolnet.attractors as Attractors
 import pyboolnet.basins_of_attraction as Basins
 import pyboolnet.state_transition_graphs as STGs
-ori_file = "data/ToyModel/ToyModel.bnet"
-cand_file = "data/ToyModel/50_Modified/ToyModel.bnet"
-cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
+import numpy as np
+ori_file = "output/caspo/ToyModel/0_Modified/OPT_ToyModel.bnet"
+cand_file = "output/caspo/ToyModel/10_Modified/OPT_ToyModel.bnet"
+# ori_file = "data/ToyModel/ToyModel.bnet"
+# # cand_file = "data/ToyModel/50_Modified/ToyModel.bnet"
+# cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
 ori_prime = FileExchange.bnet2primes(ori_file)
 cand_prime = FileExchange.bnet2primes(cand_file)
 ori_attractors = Attractors.compute_attractors(ori_prime, "asynchronous") 
@@ -244,4 +247,89 @@ ori_attrs = [x['state'] for x in ori_attractors['attractors']]
 cand_attrs = [x['state'] for x in cand_attractors['attractors']]
 ori_basin = [Basins.weak_basin(ori_prime, "asynchronous", state['str']).get('perc', 0.0) for state in ori_attrs]
 cand_basin = [Basins.weak_basin(cand_prime, "asynchronous", state['str']).get('perc', 0.0) for state in cand_attrs]
+
+def _get_nodes_from_attractors(attractors):
+    """Get all unique nodes from attractors."""
+    if not attractors:
+        return set()
+    nodes = set()
+    for att in attractors:
+        nodes.update(att['dict'].keys())
+    return nodes
+
+orig_nodes = _get_nodes_from_attractors(ori_attrs)
+recon_nodes = _get_nodes_from_attractors(cand_attrs)
+common_nodes = orig_nodes.intersection(recon_nodes)
+all_nodes = sorted(list(orig_nodes.union(recon_nodes)))
+
+orig_enhanced = []
+recon_enhanced = []
+
+# Build for original attractors
+for att in ori_attrs:
+    vector = []
+    for node in all_nodes:
+        if node in att['dict']:
+            vector.append(float(att['dict'][node]))
+        else:
+            vector.append(np.nan)  # Missing node
+    orig_enhanced.append(vector)
+
+# Build for reconstructed attractors
+for att in cand_attrs:
+    vector = []
+    for node in all_nodes:
+        if node in att['dict']:
+            vector.append(float(att['dict'][node]))
+        else:
+            vector.append(np.nan)  # Missing node
+    recon_enhanced.append(vector)
+
+orig_enhanced = np.array(orig_enhanced)
+recon_enhanced = np.array(recon_enhanced)
+
+def _compute_basin_sizes(primes, attractors):
+    weight = [Basins.weak_basin(primes, "asynchronous", state['str']).get('perc', 0.0) for state in attractors]
+    weights = np.array(weight)
+    # Normalize to prevent scale issues
+    return weights / np.sum(weights) if np.sum(weights) > 0 else weights
+orig_basins = _compute_basin_sizes(ori_prime, ori_attrs)
+recon_basins = _compute_basin_sizes(cand_prime, cand_attrs)
+
+
+def _compute_pairwise_similarity(vec1, vec2, similarity_type='levenshtein'):
+    """
+    Compute similarity between two vectors handling NaN values properly.
+    """            
+    if similarity_type == 'jaccard':
+        return jaccard_similarity(vec1, vec2)
+
+    elif similarity_type == 'hamming':
+        return hamming_similarity(vec1, vec2)
+    
+    elif similarity_type == 'levenshtein':
+        # Levenshtein similarity (1 - edit_distance/max_length)
+        edit_dist = levenshtein_distance(vec1, vec2)
+        max_len = len(vec1)
+        return 1 - (edit_dist / max_len) if max_len > 0 else 0.0
+    
+    elif similarity_type == 'lcs':
+        # LCS similarity (lcs_length / max_length)
+        lcs_len = longest_common_subsequence(vec1, vec2)
+        max_len = max(len(vec1), len(vec2))
+        return lcs_len / max_len if max_len > 0 else 0.0        
+
+n_orig = len(orig_enhanced)
+n_recon = len(recon_enhanced)
+
+sim_matrix = np.zeros((n_orig, n_recon))
+
+for i in range(n_orig):
+    for j in range(n_recon):
+        sim_matrix[i, j] = _compute_pairwise_similarity(
+            orig_enhanced[i], recon_enhanced[j], 'jaccard')
+
+row_ind, col_ind = linear_sum_assignment(1-sim_matrix)
+
+valid_matches
 ```

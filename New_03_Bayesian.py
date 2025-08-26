@@ -398,6 +398,7 @@ if __name__ == "__main__":
     sif_network = model.get_sif_network()
 
     model.convert_to_bnet("output/bayesian.bnet")
+    model.convert_to_sif(learned_edges, "output/bayesian.sif")
     
     print("Learned Network (SIF format):")
     print("Source\tSign\tTarget")
