@@ -411,7 +411,7 @@ if __name__ == "__main__":
     sif_net1 = BooleanNetworkGraph.read_sif('output/meigo/ToyModel/0_Modified/VNS/OPT_ToyModel.sif')
     # sif_net1 = BooleanNetworkGraph.read_sif('data/DREAMmodel/DreamModel.sif')
     # sif_net2 = BooleanNetworkGraph.read_sif('data/DREAMmodel/30_Modified/DreamModel.sif')
-    sif_net2 = BooleanNetworkGraph.read_sif('output/caspo/ToyModel/60_Modified/OPT_ToyModel.sif')
+    # sif_net2 = BooleanNetworkGraph.read_sif('output/caspo/ToyModel/60_Modified/OPT_ToyModel.sif')
     sif_net2 = BooleanNetworkGraph.read_sif('output/meigo/ToyModel/80_Modified/VNS/OPT_ToyModel.sif')
     print(f"SIF Network 1: {sif_net1.number_of_nodes()} nodes, {sif_net1.number_of_edges()} edges")
     print(f"SIF Network 2: {sif_net2.number_of_nodes()} nodes, {sif_net2.number_of_edges()} edges")

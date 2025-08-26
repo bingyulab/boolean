@@ -63,7 +63,8 @@ class OptimizedNetworkRunner:
                 f"output/comparison_{dataset}_*.csv",
                 f"output/{dataset}/*.png",
                 f"data/{dataset_name}/*_Modified/*",                
-                f"output/locked/*"
+                f"output/locked/*",
+                "network_analysis.log"
             ]
             
             for pattern in cleanup_patterns:

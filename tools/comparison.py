@@ -423,7 +423,8 @@ class AttractorComparison:
             'f1_score': f1,
             'total_matches': len(valid_matches),
             'orig_count': n_orig,
-            'recon_count': n_recon
+            'recon_count': n_recon,
+            'recon_total': self.recon_total
         }
     
     def _empty_results(self):

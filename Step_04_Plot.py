@@ -209,7 +209,7 @@ def load_and_plot_results(dataset_name='toy'):
     print(full_df.head())
     avg_columns = [
         'jaccard', 'hamming', 'lcs', 'levenshtein',
-        'precision', 'recall', 'f1_score', 'mes',
+        'precision', 'recall', 'f1_score', 'mse',
         'recon_total', 'total_time', 
         'node_jaccard_topology', 'edge_jaccard_topology',  'graph_edit_distance', 'degree_distribution'
     ]
