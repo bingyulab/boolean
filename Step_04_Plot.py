@@ -7,7 +7,6 @@ import argparse
 plt.style.use('seaborn-v0_8')
 # sns.set_palette("husl")
 # plt.style.use(['science'])
-
 # Define the methods and their colors for consistent visualization
 methods = ['CASPO', 'VNS', 'GA', 'ILP']
 colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#FF7F00']  # Red, Blue, Green, Orange (ColorBrewer Set1)
@@ -50,9 +49,9 @@ def create_comparison_plots(df, dataset_name='toy'):
     key_metrics = {
         'Similarity Metrics': ['jaccard', 'hamming', 'lcs', 'levenshtein'],
         'Coverage Metrics': ['precision', 'recall', 'f1_score', 'mse'],
-        'Topology Metrics': ['node_jaccard_topology', 'edge_jaccard_topology', 
-                             'graph_edit_distance', 'degree_distribution']
+        'Topology Metrics': ['node_jaccard_topology', 'edge_jaccard_topology', 'graph_edit_distance']
     }
+    
     # Create figure 1: Attractor similarity metrics comparison
     fig, axes = plt.subplots(2, 2, figsize=(8, 6))
     fig.suptitle(f'Attractor Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
@@ -78,43 +77,57 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.close(fig)
                  
     # Create figure 3: Topology similarity metrics comparison
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 6))
     fig.suptitle(f'Topology Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
-    plot_metric(df, axes[0, 0], 'node_jaccard_topology', 'Node Jaccard Topology Performance', 'o')
-    plot_metric(df, axes[0, 1], 'edge_jaccard_topology', 'Edge Jaccard Topology Performance', 's')
-    plot_metric(df, axes[1, 0], 'graph_edit_distance', 'Graph Edit Distance Performance', '^')
-    plot_metric(df, axes[1, 1], 'degree_distribution', 'Degree Distribution Performance', 'D')
+    plot_metric(df, axes[0], 'node_jaccard_topology', 'Node Jaccard Performance', 'o')
+    plot_metric(df, axes[1], 'edge_jaccard_topology', 'Edge Jaccard Performance', 's')
     plt.tight_layout()
     fig.savefig(output_dir / 'topology_similarity_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
            
     # Create figure 4: Runtime comparison
-    if 'total_time' in df.columns:      
-        fig, ax = plt.subplots(figsize=(8, 6))  
-        
-        for method in methods:
-            method_data = df[df['method'] == method]
-            ax.plot(method_data['change_percent'], method_data['total_time'], 
-                       marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method])
-        
-        ax.set_xlabel('Change Percentage')
-        ax.set_ylabel('Total Time (log scale)')
-        ax.set_title(f'Runtime Comparison Across Methods of {dataset_name}')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        plt.savefig(output_dir / 'runtime_comparison.png', dpi=300, bbox_inches='tight')
-        plt.close()
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    ax_time, ax_recon = axes.ravel()
+
+    # Left: runtime (log scale)
+    for method in methods:
+        method_data = df[df['method'] == method]
+        ax_time.plot(
+            method_data['change_percent'], method_data['total_time'],
+            marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method]
+        )
+    ax_time.set_xlabel('Change Percentage')
+    ax_time.set_ylabel('Total Time (log scale)')
+    ax_time.set_title(f'Runtime Comparison Across Methods of {dataset_name}')
+    ax_time.set_yscale('log')
+    ax_time.grid(True, alpha=0.3)
+    ax_time.legend()
+
+    # Right: reconstructed attractors count
+    for method in methods:
+        method_data = df[df['method'] == method]
+        ax_recon.plot(
+            method_data['change_percent'], method_data['recon_total'],
+            marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method]
+        )
+    ax_recon.set_xlabel('Change Percentage')
+    ax_recon.set_ylabel('Number of Reconstructed Attractors')
+    ax_recon.set_title(f'Number of Reconstructed Attractors Across Methods of {dataset_name}')
+    ax_recon.grid(True, alpha=0.3)
+    ax_recon.legend()
+
+    plt.tight_layout()
+    # Save the combined figure (also save under original filenames for compatibility)
+    fig.savefig(output_dir / 'runtime_and_reconstructed_comparison.png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
     
     # Create figure 5: Robustness analysis (performance degradation)    
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
     metrics_to_analyze = ['f1_score', 'jaccard', 'hamming', 'lcs', 'levenshtein', 
-                          'node_jaccard_topology', 'edge_jaccard_topology', 
-                          'graph_edit_distance']
+                          'node_jaccard_topology', 'edge_jaccard_topology']
 
     for i, method in enumerate(methods):
         ax_sub = axes[i // 2, i % 2]
@@ -141,24 +154,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     plt.tight_layout()
     plt.savefig(output_dir / 'robustness_analysis.png', dpi=300, bbox_inches='tight')
     plt.close()
-
-    # Create figure 6: Number of reconstruct attractors
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    for method in methods:
-        method_data = df[df['method'] == method]
-        ax.plot(method_data['change_percent'], method_data['recon_total'], 
-                    marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method])
-
-    ax.set_xlabel('Change Percentage')
-    ax.set_ylabel('Number of Reconstructed Attractors')
-    ax.set_title(f'Number of Reconstructed Attractors Across Methods of {dataset_name}')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / 'reconstructed_attractors.png', dpi=300, bbox_inches='tight')
-    plt.close()            
+        
     
     print(f"All plots have been saved to the '{dataset_name}' directory!")
     print(f"Generated plots:")
@@ -211,7 +207,7 @@ def load_and_plot_results(dataset_name='toy'):
         'jaccard', 'hamming', 'lcs', 'levenshtein',
         'precision', 'recall', 'f1_score', 'mse',
         'recon_total', 'total_time', 
-        'node_jaccard_topology', 'edge_jaccard_topology',  'graph_edit_distance', 'degree_distribution'
+        'node_jaccard_topology', 'edge_jaccard_topology',  'graph_edit_distance'
     ]
 
     group_columns = ['method', 'change_percent']
@@ -247,7 +243,7 @@ def load_and_plot_results(dataset_name='toy'):
         toy_df['dataset'] = "Toy"
         combined_df = pd.concat([df, toy_df], ignore_index=True)
 
-        for metric in ['jaccard', 'hamming', 'lcs', 'total_time', 'node_jaccard_topology', 'edge_jaccard_topology', 'recon_total']:
+        for metric in ['jaccard', 'hamming', 'lcs', 'levenshtein', 'f1_score', 'total_time', 'node_jaccard_topology', 'edge_jaccard_topology', 'recon_total']:
             fig, axes = plt.subplots(2, 2, figsize=(8, 6))
             fig.suptitle(f'{metric} Similarity Metrics Comparison Across Network', fontsize=16, fontweight='bold')
             ymin, ymax = combined_df[metric].min(), combined_df[metric].max()

@@ -7,7 +7,7 @@ This repository contains tools for analyzing and optimizing Boolean networks usi
 To run the code on a High-Performance Computing (HPC) cluster, you need to load the necessary modules. Here are the commands to do so:
 
 ```bash
-salloc -N 1 -n 1 --exclusive
+salloc -N 1 -n 1 --exclusive --time=4:00:00
 salloc -N 1 -n 1 --exclusive -C skylake
 module load lang/R/4.4.1-gfbf-2023b
 module load lang/Python/3.11.5-GCCcore-13.2.0
