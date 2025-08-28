@@ -234,11 +234,11 @@ import pyboolnet.attractors as Attractors
 import pyboolnet.basins_of_attraction as Basins
 import pyboolnet.state_transition_graphs as STGs
 import numpy as np
-ori_file = "output/caspo/ToyModel/0_Modified/OPT_ToyModel.bnet"
-cand_file = "output/caspo/ToyModel/10_Modified/OPT_ToyModel.bnet"
-# ori_file = "data/ToyModel/ToyModel.bnet"
+# ori_file = "output/caspo/ToyModel/0_Modified/OPT_ToyModel.bnet"
+# cand_file = "output/caspo/ToyModel/10_Modified/OPT_ToyModel.bnet"
+ori_file = "data/ToyModel/ToyModel.bnet"
 # # cand_file = "data/ToyModel/50_Modified/ToyModel.bnet"
-# cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
+cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
 ori_prime = FileExchange.bnet2primes(ori_file)
 cand_prime = FileExchange.bnet2primes(cand_file)
 ori_attractors = Attractors.compute_attractors(ori_prime, "asynchronous") 

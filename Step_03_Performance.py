@@ -286,8 +286,7 @@ class OptimizedNetworkRunner:
             sif_net1 = BooleanNetworkGraph.read_sif(gd_sif)
             sif_net2 = BooleanNetworkGraph.read_sif(opt_sif)
             
-            sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2)          
-            report = sif_analyzer.comprehensive_similarity_report()     
+            sif_analyzer = NetworkTopologyAnalyzer(sif_net1, sif_net2) 
             
             # Combine results
             eval_results = {}
@@ -296,13 +295,12 @@ class OptimizedNetworkRunner:
                 eval_results.update(attractor_results.iloc[0].to_dict())
             else:
                 # If it's already a dict
-                eval_results.update(attractor_results)
-                
-            eval_results['edge_jaccard_topology'] = limit_float(report['basic_metrics']['jaccard_edge_similarity'])
-            eval_results['node_jaccard_topology'] = limit_float(report['basic_metrics']['node_overlap_similarity'])
-            eval_results['graph_edit_distance'] = limit_float(report['basic_metrics']['graph_edit_distance'])
-            eval_results['degree_distribution'] = limit_float(report['degree_distribution']['similar'])
-            eval_results['overall_similarity'] = limit_float(report['overall_similarity_score'])
+                eval_results.update(attractor_results) 
+                         
+            eval_results['edge_jaccard_topology'] = sif_analyzer.jaccard_similarity()
+            eval_results['node_jaccard_topology'] = sif_analyzer.node_overlap_similarity()
+            eval_results['graph_edit_distance']   = sif_analyzer.graph_edit_distance(normalized=True)
+               
             return eval_results
             
         except Exception as e:
@@ -591,7 +589,7 @@ def main():
     
     # Run analysis
     logger.info(f"Starting analysis: {args.ntimes} iterations on {args.dataset}")
-    
+    start_time = time.time()
     for i in range(1, args.ntimes + 1):
         logger.info(f"=== Iteration {i}/{args.ntimes} ===")
         logger.info("Step A: Running perturbation...")
@@ -617,7 +615,7 @@ def main():
             )
         
         logger.info(f"Iteration {i} completed: {len(df)} results")
-    
+    logger.info(f"All iterations completed in {(time.time() - start_time)/ 60:.2f} minutes")
     logger.info("Analysis completed successfully!")
 
 if __name__ == "__main__":

@@ -1,6 +1,4 @@
 ```r
-data(CNOlistDREAM,package="CellNOptR")
-data(DreamModel,package="CellNOptR")
 summarizeDreamData <- function(model, CNOl) {
   # 1) Network (BoolNet) summary
   n_nodes       <- length(model$namesSpecies)
@@ -30,6 +28,15 @@ summarizeDreamData <- function(model, CNOl) {
   cat("• Time‐points per experiment:", n_times, "\n")
   cat("• Total experiments (rows)  :", n_samples, "\n")
 }
+library(CellNOptR)
+data(CNOlistDREAM,package="CellNOptR")
+data(DreamModel,package="CellNOptR")
+
+data(CNOlistToy,package="CellNOptR")
+data(ToyModel,package="CellNOptR")
+summarizeDreamData(DreamModel, CNOlistDREAM)
+summarizeDreamData(ToyModel, CNOlistToy)
+
 ```
 === Network summary ===
 • Nodes (species)         : 40 

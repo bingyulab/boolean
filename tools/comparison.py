@@ -1,6 +1,6 @@
 import pyboolnet.file_exchange as FileExchange
-import pyboolnet.attractors as Attractors
 import pyboolnet.basins_of_attraction as Basins
+from pyboolnet.trap_spaces import compute_steady_states
 import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
@@ -51,9 +51,9 @@ def levenshtein_distance(s1, s2):
     Handles NaN values by treating them as a special character.
     """
     # Convert to strings, treating NaN as special symbol
-    str1 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s1])
-    str2 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s2])
-    
+    str1 = ''.join([ 'N' if np.isnan(x) else str(int(x)) for x in s1])
+    str2 = ''.join([str(int(x)) for x in s2 if not np.isnan(x)])
+
     m, n = len(str1), len(str2)
     
     # Create DP matrix
@@ -100,8 +100,8 @@ def longest_common_subsequence(s1, s2):
     Handles NaN values by treating them as a special character.
     """
     # Convert to strings, treating NaN as special symbol
-    str1 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s1])
-    str2 = ''.join(['N' if np.isnan(x) else str(int(x)) for x in s2])
+    str1 = ''.join([ 'N' if np.isnan(x) else str(int(x)) for x in s1])
+    str2 = ''.join([str(int(x)) for x in s2 if not np.isnan(x)])
     
     m, n = len(str1), len(str2)
     
@@ -162,14 +162,16 @@ class AttractorAnalysis:
     @staticmethod
     def compute_attractors(primes):  
         logging.disable(logging.INFO)
-        result = Attractors.compute_attractors(primes, "synchronous") 
+        # result = Attractors.compute_attractors(primes, "synchronous") 
+        result = compute_steady_states(primes)
         logging.disable(logging.NOTSET)
         return result
 
     def get_attractors(self, bnet_file):
         primes = AttractorAnalysis.load_bnet(bnet_file)
         attrs = AttractorAnalysis.compute_attractors(primes)
-        return primes, [x['state'] for x in attrs['attractors']]
+        # return primes, [x['state'] for x in attrs['attractors']]
+        return primes, attrs
     
     @staticmethod
     def get_basin_sizes(primes, state):   
@@ -212,48 +214,48 @@ class AttractorComparison:
     """
 
     def __init__(self, ori_primes, original_attractors, recon_primes, 
-                 reconstructed_attractors, basin_weight=0.3, strategy="top_k"):
+                 reconstructed_attractors, basin_weight=0.3, strategy="random"):
         self.ori_primes = ori_primes
         self.recon_primes = recon_primes
         self.basin_weight = basin_weight  # Weight for basin size consideration        
         
         self.recon_total = len(reconstructed_attractors)
         self.original_attractors = original_attractors
-        if strategy == 'top_k':
-            self.reconstructed_attractors = self._select_attractors_for_comparison(
-                reconstructed_attractors, len(original_attractors)
-            )
-        else:
+        if strategy is None:
             self.reconstructed_attractors = reconstructed_attractors
+        else:
+            self.reconstructed_attractors = self._select_attractors_for_comparison(
+                reconstructed_attractors, len(original_attractors), strategy
+            )
             
         # Get node sets
         self.orig_nodes = self._get_nodes_from_attractors(self.original_attractors)
         self.recon_nodes = self._get_nodes_from_attractors(self.reconstructed_attractors)
         self.common_nodes = self.orig_nodes.intersection(self.recon_nodes)
         self.all_nodes = sorted(list(self.orig_nodes.union(self.recon_nodes)))
-        
         # Build enhanced representations
-        self._build_enhanced_representations()
-        
-        # Compute basin sizes for weighting
-        self.orig_basins = self._compute_basin_sizes(ori_primes, self.original_attractors)
-        self.recon_basins = self._compute_basin_sizes(recon_primes, self.reconstructed_attractors)
+        self._build_enhanced_representations() 
         
     def _compute_basin_sizes(self, primes, attractors):
-        weight = [AttractorAnalysis.get_basin_sizes(primes, att['str']) for att in attractors]        
+        weight = [AttractorAnalysis.get_basin_sizes(primes, att['attr']) for att in attractors]        
         weights = np.array(weight)
         # Normalize to prevent scale issues
         return weights / np.sum(weights) if np.sum(weights) > 0 else weights
     
-    def _select_attractors_for_comparison(self, attractors, max_count):
+    def _select_attractors_for_comparison(self, attractors, max_count, strategy):
         if len(attractors) <= max_count:
             return attractors
-        # Select top K attractors by basin size
-        basin_sizes = self._compute_basin_sizes(self.recon_primes, attractors)
-        #  Normalize basin sizes to [0,1] to prevent overflow
-        basin_sizes = basin_sizes / np.max(basin_sizes) if np.max(basin_sizes) > 0 else basin_sizes
+        top_indices = []
+        if strategy == "top_k":
+            # Select top K attractors by basin size
+            basin_sizes = self._compute_basin_sizes(self.recon_primes, attractors)
+            #  Normalize basin sizes to [0,1] to prevent overflow
+            basin_sizes = basin_sizes / np.max(basin_sizes) if np.max(basin_sizes) > 0 else basin_sizes
         # Get indices of top K attractors
-        top_indices = np.argsort(basin_sizes)[::-1][:max_count]
+            top_indices = np.argsort(basin_sizes)[::-1][:max_count]
+        elif strategy == "random":
+            # Select random attractors
+            top_indices = np.random.choice(len(attractors), size=max_count, replace=False)
         return [attractors[i] for i in top_indices]  
     
     def _get_nodes_from_attractors(self, attractors):
@@ -262,7 +264,7 @@ class AttractorComparison:
             return set()
         nodes = set()
         for att in attractors:
-            nodes.update(att['dict'].keys())
+            nodes.update(att.keys())
         return nodes
     
     def _build_enhanced_representations(self):
@@ -277,8 +279,8 @@ class AttractorComparison:
         for att in self.original_attractors:
             vector = []
             for node in self.all_nodes:
-                if node in att['dict']:
-                    vector.append(float(att['dict'][node]))
+                if node in att:
+                    vector.append(float(att[node]))
                 else:
                     vector.append(np.nan)  # Missing node
             self.orig_enhanced.append(vector)
@@ -287,8 +289,8 @@ class AttractorComparison:
         for att in self.reconstructed_attractors:
             vector = []
             for node in self.all_nodes:
-                if node in att['dict']:
-                    vector.append(float(att['dict'][node]))
+                if node in att:
+                    vector.append(float(att[node]))
                 else:
                     vector.append(np.nan)  # Missing node
             self.recon_enhanced.append(vector)
@@ -331,6 +333,7 @@ class AttractorComparison:
         
         for i in range(n_orig):
             for j in range(n_recon):
+                # print(f"Computing {similarity_type} similarity between original attractor {i} and reconstructed attractor {j}")
                 sim_matrix[i, j] = self._compute_pairwise_similarity(
                     self.orig_enhanced[i], self.recon_enhanced[j], similarity_type)
         
@@ -475,13 +478,13 @@ class AttractorComparison:
     
 if __name__ == "__main__":
     # ori_primes = "data/ToyModel/ToyModel.bnet"
-    # ori_primes = "output/cellnopt/ToyModel/0_Modified/ga/OPT_ToyModel.bnet"
+    ori_primes = "output/cellnopt/ToyModel/0_Modified/ga/OPT_ToyModel.bnet"
     # ori_primes = "output/meigo/ToyModel/0_Modified/VNS/OPT_ToyModel.bnet"
-    ori_primes = "output/caspo/ToyModel/0_Modified/OPT_ToyModel.bnet"
+    # ori_primes = "output/caspo/ToyModel/0_Modified/OPT_ToyModel.bnet"
     # compared_bnet = "data/ToyModel/ToyModel.bnet"
-    # compared_bnet = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
+    compared_bnet = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
     # compared_bnet = "output/caspo/ToyModel/50_Modified/OPT_ToyModel.bnet"
-    compared_bnet = "output/caspo/ToyModel/10_Modified/OPT_ToyModel.bnet"
+    # compared_bnet = "output/caspo/ToyModel/10_Modified/OPT_ToyModel.bnet"
     # The code you provided is a Python code snippet that seems to be commented out. It appears to be
     # assigning a file path to a variable `ori_primes`. The file path seems to be related to a
     # Bayesian network file in the context of a cell signaling network model. However, since the code
