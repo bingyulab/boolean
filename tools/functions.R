@@ -534,7 +534,8 @@ pkn2sif<-function(model,optimRes=NA,writeSif=FALSE, filename="Model"){
               tmp<-matrix(0,nrow=1,ncol=3)
 							tmp[1,1]<-reacInput[[i]][inp]
 							tmp[1,3]<-paste("and",nANDs,sep="")
-							tmp[1,2]<-ifelse(
+              
+              tmp[1,2]<-ifelse(
 								model$notMat[which(reacInput[[i]][inp]==rownames(model$notMat)),i] == 1,
 								-1,1)
               sifFile<-rbind(sifFile,tmp)

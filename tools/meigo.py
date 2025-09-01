@@ -1,7 +1,6 @@
 import rpy2.robjects as ro
 from rpy2.robjects.packages import importr
 from rpy2.robjects import r
-import pandas as pd
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 import os
@@ -9,7 +8,7 @@ import shutil
 import json
 from tools.config import dataset_map
 from tools.comparison import limit_float, AttractorAnalysis
-from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
+from tools.topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
 
 class MEIGOOptimizer:

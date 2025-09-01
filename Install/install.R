@@ -16,7 +16,11 @@ packages_to_install <- c(
     "CellNOptR",
     "BoolNet",
     "here",
-    "optparse"
+    "optparse",
+    "dplyr",
+    "tidyr",
+    "readr",
+    "data.table"
 )
 
 cat("Installing packages...\n")

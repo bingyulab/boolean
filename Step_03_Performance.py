@@ -16,7 +16,7 @@ from tools.functions import setup_logger
 from tools.caspoTest import CaspoOptimizer
 from tools.config import dataset_map, create_experiment_configs, NetworkPerturbationConfig, AdaptiveParameterManager
 from tools.comparison import limit_float, AttractorAnalysis
-from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
+from tools.topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
 
 logger = setup_logger()
@@ -617,6 +617,17 @@ def main():
         logger.info(f"Iteration {i} completed: {len(df)} results")
     logger.info(f"All iterations completed in {(time.time() - start_time)/ 60:.2f} minutes")
     logger.info("Analysis completed successfully!")
+
+    remove_files = []
+    remove_files.extend(glob.glob("StmResults*.pdf"))
+    remove_files.extend(glob.glob("*.RData"))
+
+    for f in remove_files:
+        try:
+            os.remove(f)
+            logger.info(f"Removed file: {f}")
+        except Exception as e:
+            logger.error(f"Error removing file {f}: {e}")
 
 if __name__ == "__main__":
     main()

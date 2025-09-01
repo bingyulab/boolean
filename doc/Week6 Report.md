@@ -242,7 +242,8 @@ cand_file = "output/cellnopt/ToyModel/80_Modified/ga/OPT_ToyModel.bnet"
 ori_prime = FileExchange.bnet2primes(ori_file)
 cand_prime = FileExchange.bnet2primes(cand_file)
 ori_attractors = Attractors.compute_attractors(ori_prime, "asynchronous") 
-cand_attractors = Attractors.compute_attractors(cand_prime, "asynchronous", max_output=len(ori_attractors['attractors']))
+# cand_attractors = Attractors.compute_attractors(cand_prime, "asynchronous", max_output=len(ori_attractors['attractors']))
+cand_attractors = Attractors.compute_attractors(cand_prime, "asynchronous")
 ori_attrs = [x['state'] for x in ori_attractors['attractors']]
 cand_attrs = [x['state'] for x in cand_attractors['attractors']]
 ori_basin = [Basins.weak_basin(ori_prime, "asynchronous", state['str']).get('perc', 0.0) for state in ori_attrs]
