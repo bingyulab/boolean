@@ -8,7 +8,7 @@ from tools.config import dataset_map
 import seaborn as sns
 from matplotlib import pyplot as plt
 from tools.comparison import limit_float, AttractorAnalysis
-from Step_01_Topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
+from tools.topology_analysis import NetworkTopologyAnalyzer, BooleanNetworkGraph
 
 
 def configure_mt(config, proxy, overwrite=None):
