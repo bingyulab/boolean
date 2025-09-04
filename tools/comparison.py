@@ -347,8 +347,8 @@ class AttractorComparison:
         # Compute similarity matrices for different metrics
         jaccard_matrix = self._compute_similarity_matrix('jaccard')
         hamming_matrix = self._compute_similarity_matrix('hamming')
-        lcs_matrix = self._compute_similarity_matrix('lcs')
-        levenshtein_matrix = self._compute_similarity_matrix('levenshtein')
+        # lcs_matrix = self._compute_similarity_matrix('lcs')
+        # levenshtein_matrix = self._compute_similarity_matrix('levenshtein')
 
         n_orig = len(self.original_attractors)
         n_recon = len(self.reconstructed_attractors)
@@ -377,14 +377,14 @@ class AttractorComparison:
         # Compute metrics for matched pairs
         matched_jaccard = []
         matched_hamming = []
-        matched_lcs = []
-        matched_levenshtein = []
+        # matched_lcs = []
+        # matched_levenshtein = []
 
         for i, j in valid_matches:
             matched_jaccard.append(jaccard_matrix[i, j])
             matched_hamming.append(hamming_matrix[i, j])
-            matched_lcs.append(lcs_matrix[i, j])
-            matched_levenshtein.append(levenshtein_matrix[i, j])
+            # matched_lcs.append(lcs_matrix[i, j])
+            # matched_levenshtein.append(levenshtein_matrix[i, j])
 
         true_positives = 0
         false_positives = 0
@@ -419,8 +419,8 @@ class AttractorComparison:
         return {
             'jaccard': np.mean(matched_jaccard) if matched_jaccard else 0.0,
             'hamming': np.mean(matched_hamming) if matched_hamming else 0.0,
-            'lcs': np.mean(matched_lcs) if matched_lcs else 0.0,
-            'levenshtein': np.mean(matched_levenshtein) if matched_levenshtein else 0.0,
+            # 'lcs': np.mean(matched_lcs) if matched_lcs else 0.0,
+            # 'levenshtein': np.mean(matched_levenshtein) if matched_levenshtein else 0.0,
             'precision': precision,
             'recall': recall,
             'f1_score': f1,
@@ -433,7 +433,8 @@ class AttractorComparison:
     def _empty_results(self):
         """Return empty results when comparison is not possible."""
         return {
-            'jaccard': 0.0, 'hamming': 0.0, 'levenshtein': 0.0, 'lcs': 0.0,
+            'jaccard': 0.0, 'hamming': 0.0, 
+            # 'levenshtein': 0.0, 'lcs': 0.0,
             'precision': 0.0, 'recall': 0.0, 'f1_score': 0.0,
             'total_matches': 0,
             'orig_count': len(self.original_attractors),
@@ -462,11 +463,9 @@ class AttractorComparison:
 
         # Compute composite score with balanced weighting
         composite_score = (
-            0.2 * results['jaccard'] +
-            0.2 * results['hamming'] +
-            0.2 * results['levenshtein'] +
-            0.2 * results['lcs'] +
-            0.2 * results['f1_score']
+            0.35 * results['jaccard'] +
+            0.35 * results['hamming'] +
+            0.3 * results['f1_score']
         )
         
         results['composite_score'] = composite_score
@@ -499,5 +498,5 @@ if __name__ == "__main__":
     print(f"\nSimilarity Metrics Comparison:")
     print(f"Jaccard: {results_dict['jaccard']:.3f}")
     print(f"Hamming: {results_dict['hamming']:.3f}")
-    print(f"LCS: {results_dict['lcs']:.3f}")
-    print(f"Levenshtein: {results_dict['levenshtein']:.3f}")
+    # print(f"LCS: {results_dict['lcs']:.3f}")
+    # print(f"Levenshtein: {results_dict['levenshtein']:.3f}")

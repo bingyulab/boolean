@@ -29,6 +29,12 @@ summarizeDreamData <- function(model, CNOl) {
   cat("• Total experiments (rows)  :", n_samples, "\n")
 }
 library(CellNOptR)
+midas_file <- "data/TCell/TCell.csv"
+sif_file <- "data/TCell/TCell.sif"
+pknmodel <- readSIF(sif_file)
+cnolist <- makeCNOlist(readMIDAS(midas_file), subfield = FALSE)  
+summarizeDreamData(pknmodel, cnolist)
+
 data(CNOlistDREAM,package="CellNOptR")
 data(DreamModel,package="CellNOptR")
 
@@ -85,3 +91,4 @@ $namesSpecies
 [17] "ikk"    "akt"    "traf6"  "il1r"   "p38"    "shc"    "mkk6"   "tgfa"  
 [25] "traf2"  "sitpec" "pi3k"   "ras"    "egfr"   "tnfr"   "il1a"   "cot"   
 [33] "mkk3"   "erk12"  "pdk1"   "tnfa"   "ask1"   "hsp27"  "jnk12"  "ikb" 
+

@@ -1,7 +1,6 @@
 library(BoolNet)
 library(CellNOptR)
 library(here)
-library(optparse)
 
 source(here::here("tools", "data.R"))
 
@@ -139,8 +138,8 @@ detect_node_types <- function(model) {
 
     list(
         names = names,
-        indeg = indeg,
-        outdeg = outdeg,
+        indeg = in_degree,
+        outdeg = out_degree,
         source_nodes = source_nodes,
         sink_nodes = sink_nodes,
         internal_nodes = internal_nodes,
@@ -177,107 +176,31 @@ design_experiments <- function(node_analysis, n_experiments = 30, n_timepoints =
 
     # Convert to data frame for readability
     binary_df <- as.data.frame(binary_matrix)
-
+    set.seed(123)
     experiments <- sample(1:nrow(binary_df), n_experiments, replace = TRUE)
     experiments <- binary_df[experiments, , drop = FALSE]
-
-    # Build matrices in the format CellNOptR expects:
-    valueStimuli <- as.matrix(experiments[, seq_len(ncol(stim_grid)), drop = FALSE])
-    if (ncol(valueStimuli) == 0) valueStimuli <- matrix(0, nrow = nrow(experiments), ncol = 0)
-    colnames(valueStimuli) <- chosen_stimuli
-
-    valueInhibitors <- as.matrix(experiments[, (ncol(stim_grid) + 1):ncol(experiments), drop = FALSE])
-    if (ncol(valueInhibitors) == 0) valueInhibitors <- matrix(0, nrow = nrow(experiments), ncol = 0)
-    colnames(valueInhibitors) <- chosen_inhibitors
-
-    # valueCues: a matrix with presence of all cues for each experiment (we set cue presence = stimulus presence)
-    valueCues <- matrix(0, nrow = nrow(experiments), ncol = length(cues))
-    colnames(valueCues) <- cues
-    # set cue activations according to selected stimuli/inhibitors (we treat stimuli as cues here)
-    if (ncol(valueStimuli) > 0) {
-        valueCues[, colnames(valueStimuli)] <- valueStimuli
-    }
-
-
+    colnames(experiments) <- cues
+    print(length(experiments))
     list(
         namesCues = cues,
         namesStimuli = stimuli,
         namesInhibitors = inhibitor,
         namesSignals = readout,
-        timepoints = n_timepoints,
+        timeSignals = n_timepoints,
         valueCues = experiments,
         valueStimuli = experiments[, stimuli, drop = FALSE],
         valueInhibitors = experiments[, inhibitor, drop = FALSE]
     )
 }
 
-clean_factors <- function(f, inactive) {
-    if (is.na(f) || nchar(trimws(f)) == 0) {
-        return(NA_character_)
-    }
-    f <- trimws(f)
-
-    # If there are no binary operators, check single token (respecting leading '!' )
-    if (!grepl("\\||&", f)) {
-        base <- gsub("^!+", "", f) # remove leading '!' if any
-        base <- gsub("^\\(|\\)$", "", base) # remove simple surrounding parentheses
-        if (base %in% inactive) {
-            return(NA_character_)
-        }
-        return(f)
-    }
-
-    # Normalize spaces around operators so splitting is safe
-    f2 <- gsub("\\|", " | ", f)
-    f2 <- gsub("&", " & ", f2)
-    f2 <- gsub("\\s+", " ", f2)
-    tokens <- unlist(strsplit(trimws(f2), " ", fixed = FALSE))
-
-    n <- length(tokens)
-    is_op <- tokens %in% c("|", "&")
-
-    # compute base names for operands (strip leading '!' and simple parens)
-    base_names <- rep(NA_character_, n)
-    for (i in seq_len(n)) {
-        if (!is_op[i]) {
-            t <- tokens[i]
-            t2 <- gsub("^!+", "", t)
-            t2 <- gsub("^\\(|\\)$", "", t2)
-            base_names[i] <- t2
-        }
-    }
-
-    # decide which operands to keep
-    operand_keep <- (!is_op) & !(base_names %in% inactive)
-
-    # keep an operator only if both neighboring operands survive
-    op_keep <- rep(FALSE, n)
-    op_idx <- which(is_op)
-    for (i in op_idx) {
-        left <- i - 1
-        right <- i + 1
-        if (left >= 1 && right <= n) {
-            if (operand_keep[left] && operand_keep[right]) op_keep[i] <- TRUE
-        }
-    }
-
-    final_keep <- operand_keep | op_keep
-    kept <- tokens[final_keep]
-
-    if (length(kept) == 0) {
-        return(NA_character_)
-    }
-    out <- paste(kept, collapse = " ")
-    out <- gsub("\\s+", " ", out)
-    trimws(out)
-}
-
 # 4) Simulation engine (simple continuous propagation + logistic squashing)
 # This generates valueSignals as a list of matrices, one per timepoint (experiments x signals)
-simulate_network_response <- function(bnet_file, design, n_iterations = 20) {
-
-    df <- read.csv(bnet_file, header = TRUE, stringsAsFactors = FALSE, strip.white = TRUE)
-    experiments <- design$valueCues
+simulate_network_response <- function(bnet_file, design, n_iterations = 20, simLength=50) {
+    network <- loadNetwork(bnet_file)
+    stimuli_transformed <- ifelse(design$valueStimuli == 0, -1, 1)
+    inhibitor_transformed <- ifelse(design$valueInhibitors == 1, 0, -1)
+    experiments <- cbind(stimuli_transformed, inhibitor_transformed)    
+    # experiments <- design$valueCues
     readouts <- design$namesSignals
     timepoints <- design$timeSignals
 
@@ -294,57 +217,40 @@ simulate_network_response <- function(bnet_file, design, n_iterations = 20) {
     }
 
     for (exp_idx in 1:nrow(experiments)) {
-        expName <- rownames(experiments)[exp_idx]
-        inactive <- names(experiments[exp_idx, ])[experiments[exp_idx, ] == 0]
-        message("Inactive for ", expName, ": ", paste(inactive, collapse = ", "))
+        fixedOff <- names(experiments[exp_idx, ])[experiments[exp_idx, ] == 0]
+        fixedOn <- names(experiments[exp_idx, ])[experiments[exp_idx, ] == 1]
 
-        # 1. remove inactive targets
-        df_exp <- df[!(df$targets %in% inactive), ]
+        fixedmodel <- BoolNet::fixGenes(
+            network,
+            c(fixedOn, fixedOff),
+            c(rep(1, length(fixedOn)), rep(0, length(fixedOff)))
+        )
 
-        # 2. clean factors
-        df_exp$factors <- vapply(df_exp$factors, clean_factors, character(1), inactive = inactive)
+        timeSeries <- BoolNet::generateTimeSeries(
+            network = fixedmodel,
+            numSeries = 1000,
+            numMeasurements = simLength,
+            type = "asynchronous"
+        )
 
-        # 3. drop rows with NA factors
-        df_exp <- df_exp[!is.na(df_exp$factors), ]
-        row.names(df_exp) <- NULL
+        # Prepare results matrix
+        numRuns <- length(timeSeries)
+        numGenes <- length(fixedmodel$genes)
+        avgActivationMat <- matrix(NA, nrow = numRuns, ncol = numGenes)
+        colnames(avgActivationMat) <- fixedmodel$genes
 
-        # 4. save and reload
-        tmp_file <- "tmp.bnet"
-        write.table(df_exp, tmp_file, sep = " , ", row.names = FALSE, col.names = TRUE, quote = FALSE)
-        net_tmp <- loadNetwork(tmp_file)
-        file.remove(tmp_file)
-
-        # 5. compute attractors
-        atts <- getAttractors(net_tmp)
-        genes <- atts$stateInfo$genes
-
-        # prepare result
-        res <- matrix(NA_real_, nrow = length(atts$attractors), ncol = length(readouts))
-        colnames(res) <- readouts
-        rownames(res) <- paste0("Attractor", seq_along(atts$attractors))
-
-        for (i in seq_along(atts$attractors)) {
-            seqStates <- getAttractorSequence(atts, i) # matrix: rows=steps, cols=genes
-            colnames(seqStates) <- genes
-
-            for (j in seq_along(readouts)) {
-                g <- readouts[j]
-                if (g %in% genes) {
-                    res[i, j] <- mean(seqStates[, g])
-                } else {
-                    res[i, j] <- NaN
-                }
-            }
+        #Average gene activation per run
+        for (i in seq_along(timeSeries)) {
+            traj <- timeSeries[[i]]
+            avgActivationMat[i, ] <- rowSums(traj) / ncol(traj)
         }
-
-        res <- as.data.frame(res)
-
+        
         # For each readout, assign values to timepoints
         for (j in seq_along(readouts)) {
             readout_name <- readouts[j]
 
             # Check if readout is present in the network (not NaN)
-            readout_values <- res[, readout_name]
+            readout_values <- avgActivationMat[, readout_name]
             is_present <- !all(is.nan(readout_values))
 
             # Timepoint 1 (t=0): 0 if node present, NaN if absent
@@ -352,7 +258,7 @@ simulate_network_response <- function(bnet_file, design, n_iterations = 20) {
 
             # Timepoint 2 (t>0): average value if present, NaN if absent
             if (is_present) {
-                valueSignals[[2]][exp_idx, j] <- mean(readout_values, na.rm = TRUE)
+                valueSignals[[2]][exp_idx, j] <- sample(readout_values, 1)
             } else {
                 valueSignals[[2]][exp_idx, j] <- NaN
             }
@@ -374,7 +280,7 @@ option_list <- list(
     ),
     make_option(c("-t", "--timepoints"),
         type = "character", default = "0,30",
-        help = "Comma-separated timepoints (e.g. 0,10,30) for time-series MIDAS", metavar = "STRING"
+        help = "Timepoints (e.g. 0,10,30) for time-series MIDAS", metavar = "STRING"
     ),
     make_option(c("-p", "--proportion"),
         type = "integer", default = 60,
@@ -394,25 +300,25 @@ parser <- OptionParser(
 # Only parse arguments if script is run from command line
 if (sys.nframe() == 0) {
     opt <- parse_args(parser)
+    timepoints <- as.numeric(strsplit(opt$timepoints, ",")[[1]])
 
     message("=== MIDAS Data Generation Pipeline ===")
     message(sprintf("Dataset: %s", opt$dataset))
-    message(sprintf("Timepoints: %s", opt$timepoints))
+    message(sprintf("Timepoints: %s", timepoints))
     message(sprintf("Replicates: %d", opt$proportion))
     message(sprintf("Random seed: %d", opt$seed))
 
     set.seed(opt$seed)
 
-    timepoints <- as.numeric(strsplit(opt$timepoints, ",")[[1]])
     dataset_map <- list(
         toy       = c("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
         apoptosis = c("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
         dream     = c("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
-        tcell     = c("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet")
+        tcell     = c("TCell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet")
     )
     # Extract file names for the specified dataset
-    vals <- dataset_map[[dataset]]
-    base_name <- file.path("data", base_name, vals[1])
+    vals <- dataset_map[[opt$dataset]]
+    base_name <- vals[1]
     sif_file <- file.path("data", base_name, vals[2])
     rdata_file <- file.path("data", base_name, vals[3])
     midas_file <- file.path("data", base_name, vals[4])
@@ -421,6 +327,7 @@ if (sys.nframe() == 0) {
     # Load network based on dataset
     if (opt$dataset == "tcell") {
         message("Loading model from SBML/SIF ...")
+        sbml_file <- sub(".bnet$", ".sbml", bnet_file)
         model <- load_model_from_sbml(sbml_file)
     }
 
@@ -432,8 +339,9 @@ if (sys.nframe() == 0) {
         cat("- Internal nodes:", length(node_analysis$internal_nodes), "\n")
         cat("- Total observable nodes:", length(node_analysis$observable_nodes), "\n")
 
+        n_experiments = as.integer(opt$proportion * length(node_analysis$observable_nodes) / 100)
         experimental_design <- design_experiments(node_analysis,
-            n_experiments = opt$proportion * length(node_analysis$observable_nodes),
+            n_experiments = n_experiments,
             n_timepoints = timepoints,
             n_readout = 8
         )
@@ -522,14 +430,17 @@ if (sys.nframe() == 0) {
     cat("- Chosen stimuli:", paste(experimental_design$namesStimuli, collapse = ", "), "\n")
     cat("- Chosen inhibitors:", paste(experimental_design$namesInhibitors, collapse = ", "), "\n")
     cat("- Chosen readouts (signals):", paste(experimental_design$namesSignals, collapse = ", "), "\n")
-    cat("- Number of experiments:", nrow(experimental_design$experiments), "\n")
-    cat("- Timepoints:", paste(experimental_design$timepoints, collapse = ", "), "\n")
+    cat("- Number of experiments:", nrow(experimental_design$valueCues), "\n")
+    cat("- Timepoints:", paste(experimental_design$timeSignals, collapse = ", "), "\n")
 
     message("Simulating network responses ...")
     sim <- simulate_network_response(bnet_file, experimental_design, n_iterations = 20)
 
+    sim$valueCues       <- as.matrix(sim$valueCues)
+    sim$valueInhibitors <- as.matrix(sim$valueInhibitors)
+    sim$valueStimuli    <- as.matrix(sim$valueStimuli)
     message("Building CNOlist and writing MIDAS file ...")
-    writeMIDAS(sim, midas_file)
+    writeMIDAS(sim, midas_file, overwrite=TRUE)
     
     cat("\n=== MIDAS Data Generation Complete! ===\n")
     cat("- Output file:", midas_file, "\n")

@@ -15,7 +15,7 @@ source(here::here("tools", "functions.R"))
 # Define command line options
 option_list <- list(
   make_option(c("-d", "--dataset"), type="character", default="toy",
-              help="Dataset name (toy, apoptosis, dream, T-Cell) [default: %default]"),
+              help="Dataset name (toy, apoptosis, dream, TCell) [default: %default]"),
   make_option(c("-k", "--kfold"), type="integer", default=5,
               help="Number of k-fold cross validation [default: %default]"),
   make_option(c("-c", "--change_percent"), type="double", default=0.0,
@@ -58,8 +58,8 @@ get_dataset_config <- function(dataset_name) {
                        midas="Apoptosis.csv", bnet="Apoptosis.bnet", default_time=10),
     "dream" = list(name="DREAMmodel", sif="DreamModel.sif", rdata="DreamModel.RData",
                    midas="DreamModel.csv", bnet="DreamModel.bnet", default_time=30),
-    "T-Cell" = list(name="T-Cell", sif="TCell.sif", rdata="TCell.RData",
-                    midas="TCell.csv", bnet="TCell.bnet", default_time=10)
+    "TCell" = list(name="TCell", sif="TCell.sif", rdata="TCell.RData",
+                   midas="TCell.csv", bnet="TCell.bnet", default_time=10)
   )
   
   if (!dataset_name %in% names(dataset_configs)) {

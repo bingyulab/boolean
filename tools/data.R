@@ -466,14 +466,15 @@ convertSBML <- function(sbml_file) {
   bnet_file <- sub(".sbml$", ".bnet", sbml_file)
   saveNetwork(model, bnet_file)
 
-  cleaned_file <- remove_self_loops(bnet_file)
-
   library(CellNOptR)
   library(here)
   source(here::here("tools", "functions.R"))
 
-  model <- readBNET(cleaned_file)
-  sif_file <- sub(".bnet$", ".sif", bnet_file)
-  toSIF(model, sif_file, overwrite=TRUE)
+#   cleaned_file <- remove_self_loops(bnet_file)
+#   model <- readBNET(cleaned_file)
+
+  sif_file <- sub(".sbml$", ".sif", sbml_file)
+#   toSIF(model, sif_file, overwrite=TRUE)
+  write_boolnet_to_sif(model, sif_file)
 }
 

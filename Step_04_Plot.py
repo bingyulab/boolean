@@ -47,31 +47,27 @@ def create_comparison_plots(df, dataset_name='toy'):
     
     # Define key metrics to focus on
     key_metrics = {
-        'Similarity Metrics': ['jaccard', 'hamming', 'lcs', 'levenshtein'],
-        'Coverage Metrics': ['precision', 'recall', 'f1_score', 'mse'],
-        'Topology Metrics': ['node_jaccard_topology', 'edge_jaccard_topology', 'graph_edit_distance']
+        'Similarity Metrics': ['jaccard', 'hamming'],
+        'Coverage Metrics': ['f1_score', 'mse'],
+        'Topology Metrics': ['node_jaccard_topology', 'edge_jaccard_topology']
     }
     
     # Create figure 1: Attractor similarity metrics comparison
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 6))
     fig.suptitle(f'Attractor Similarity Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
-    plot_metric(df, axes[0, 0], 'jaccard', 'Jaccard Similarity Performance', 'o')
-    plot_metric(df, axes[0, 1], 'hamming', 'Hamming Similarity Performance', 's')
-    plot_metric(df, axes[1, 0], 'lcs', 'LCS Similarity Performance', '^')
-    plot_metric(df, axes[1, 1], 'levenshtein', 'Levenshtein Similarity Performance', 'D')
+    plot_metric(df, axes[0], 'jaccard', 'Jaccard Similarity Performance', 'o')
+    plot_metric(df, axes[1], 'hamming', 'Hamming Similarity Performance', 's')
     plt.tight_layout()
     fig.savefig(output_dir / 'attractors_similarity_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
 
     # Create figure 2: Attractor coverage metrics comparison
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 6))
     fig.suptitle(f'Attractor Coverage Metrics Comparison Across Methods of {dataset_name}', fontsize=16, fontweight='bold')
 
-    plot_metric(df, axes[0, 0], 'precision', 'Precision Performance', 'o')
-    plot_metric(df, axes[0, 1], 'recall', 'Recall Performance', 's')
-    plot_metric(df, axes[1, 0], 'f1_score', 'F1 Score Performance', '^')
-    plot_metric(df, axes[1, 1], 'mse', 'MSE Performance', 'D')
+    plot_metric(df, axes[0], 'f1_score', 'F1 Score Performance', '^')
+    plot_metric(df, axes[1], 'mse', 'MSE Performance', 'D')
     plt.tight_layout()
     fig.savefig(output_dir / 'attractors_coverage_metrics.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
@@ -126,7 +122,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     
     # Calculate performance degradation (relative to 0.0 change percentage)
-    metrics_to_analyze = ['f1_score', 'jaccard', 'hamming', 'lcs', 'levenshtein', 
+    metrics_to_analyze = ['f1_score', 'jaccard', 'hamming', 'mse',
                           'node_jaccard_topology', 'edge_jaccard_topology']
 
     for i, method in enumerate(methods):
@@ -204,10 +200,9 @@ def load_and_plot_results(dataset_name='toy'):
     full_df = load_results(pattern)
     print(full_df.head())
     avg_columns = [
-        'jaccard', 'hamming', 'lcs', 'levenshtein',
-        'precision', 'recall', 'f1_score', 'mse',
+        'jaccard', 'hamming', 'f1_score', 'mse',
         'recon_total', 'total_time', 
-        'node_jaccard_topology', 'edge_jaccard_topology',  'graph_edit_distance'
+        'node_jaccard_topology', 'edge_jaccard_topology', 
     ]
 
     group_columns = ['method', 'change_percent']
@@ -215,7 +210,6 @@ def load_and_plot_results(dataset_name='toy'):
     df = full_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
     
     df['dataset'] = dataset_name
-    df['graph_edit_distance'] = 1 - df['graph_edit_distance']
     # Create all plots
     create_comparison_plots(df, dataset_name)
     
@@ -228,22 +222,26 @@ def load_and_plot_results(dataset_name='toy'):
         avg_edge    = method_data['edge_jaccard_topology'].mean()
         avg_jaccard = method_data['jaccard'].mean()
         avg_hamming = method_data['hamming'].mean()
-        avg_lcs     = method_data['lcs'].mean()
-        avg_levenshtein = method_data['levenshtein'].mean()
         avg_f1      = method_data['f1_score'].mean()
         print(f"{method.upper():>6}: Avg node = {avg_node:.3f}, Avg edge = {avg_edge:.3f}, Avg Jaccard = {avg_jaccard:.3f}, "
-              f"Avg Hamming = {avg_hamming:.3f}, Avg LCS = {avg_lcs:.3f}, Avg Levenshtein = {avg_levenshtein:.3f}, "
-              f"Avg F1 score = {avg_f1:.3f}")
+              f"Avg Hamming = {avg_hamming:.3f}, Avg F1 score = {avg_f1:.3f}")
 
     toy_file = glob.glob(f"output/comparison_toy_*.csv")
     if dataset_name != 'toy' and (len(toy_file) > 0): 
         print("Loading toy dataset for comparison...")       
         toy_df = load_results(f"output/comparison_toy_*.csv")
         toy_df = toy_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
-        toy_df['dataset'] = "Toy"
+        toy_df['dataset'] = "Toy"        
         combined_df = pd.concat([df, toy_df], ignore_index=True)
+        
+        if dataset_name == 'TCell':     
+            tcell_df = load_results(f"output/comparison_TCell_*.csv")
+            tcell_df = tcell_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
+            tcell_df['dataset'] = "TCell"        
+            combined_df = pd.concat([combined_df, tcell_df], ignore_index=True)
 
-        for metric in ['jaccard', 'hamming', 'lcs', 'levenshtein', 'f1_score', 'total_time', 'node_jaccard_topology', 'edge_jaccard_topology', 'recon_total']:
+        for metric in ['jaccard', 'hamming', 'f1_score', 'total_time', 'node_jaccard_topology', 
+                       'edge_jaccard_topology', 'recon_total', 'mse']:
             fig, axes = plt.subplots(2, 2, figsize=(8, 6))
             fig.suptitle(f'{metric} Similarity Metrics Comparison Across Network', fontsize=16, fontweight='bold')
             ymin, ymax = combined_df[metric].min(), combined_df[metric].max()

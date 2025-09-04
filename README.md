@@ -37,14 +37,12 @@ make install
 ```
 Note: the version of python should be 3.11 or higher and should install `clasp` and `gringo`.
 
-## Data Preparation
+## Usage
 ```bash
-casq -s -c -n data/file.xml data/apoptosis.xml
-mv data/apoptosisbnet data/apoptosis.bnet
-mv data/apoptosissif data/apoptosis.sif
-mv data/apoptosiscsv data/apoptosis.csv
+Rscript Step_01_Synthesis_data.R # For TCell network generating experiment data
 
-python sbmlqual_to_sif_simple.py data/apoptosis.xml data/apoptosis.sif
+# Run each dataset
+make tcell 
+make toy
+make dream 
 ```
-More info on SBMLqual to SIF conversion: [SBMLqual to SIF Conversion Guide](doc/SBMLqual_to_SIF_Guide.md).
-

@@ -321,24 +321,14 @@ class NetworkTopologyAnalyzer:
             'basic_metrics': {
                 'jaccard_edge_similarity': self.jaccard_similarity(),
                 'node_overlap_similarity': self.node_overlap_similarity(),
-                'graph_edit_distance': self.graph_edit_distance(normalized=True)
+                # 'graph_edit_distance': self.graph_edit_distance(normalized=True)
             },
             'degree_distribution': self.degree_distribution_similarity(),
             'centrality_correlations': self.centrality_correlation(),
             'network1_features': self.network1.get_topology_features(),
             'network2_features': self.network2.get_topology_features()
         }
-        
-        # Calculate overall similarity score (weighted combination)
-        similarity_score = (
-            0.4 * report['basic_metrics']['jaccard_edge_similarity'] +
-            0.3 * report['basic_metrics']['node_overlap_similarity'] +
-            0.2 * (1 - min(1.0, report['basic_metrics']['graph_edit_distance'])) +
-            0.1 * (1 - report['degree_distribution']['statistic'])
-        )
-        
-        report['overall_similarity_score'] = similarity_score
-        
+
         return report
 
     def visualize_comparison(self, save_path=None):
@@ -426,8 +416,6 @@ if __name__ == "__main__":
     print("\n=== Topology Similarity Analysis ===")
     print(f"Jaccard Edge Similarity: {report['basic_metrics']['jaccard_edge_similarity']:.3f}")
     print(f"Node Overlap Similarity: {report['basic_metrics']['node_overlap_similarity']:.3f}")
-    print(f"Graph Edit Distance: {report['basic_metrics']['graph_edit_distance']:.3f}")
-    print(f"Overall Similarity Score: {report['overall_similarity_score']:.3f}")
     
     print(f"\nDegree Distribution Similar: {report['degree_distribution']['similar']}")
     print(f"Degree Distribution p-value: {report['degree_distribution']['pvalue']:.3f}")

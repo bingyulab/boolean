@@ -607,7 +607,7 @@ runPerturbPipeline <- function(dataset      = "toy",
     toy       = c("ToyModel", "ToyModel.sif", "ToyModel.RData", "ToyModel.csv", "ToyModel.bnet"),
     apoptosis = c("Apoptosis", "Apoptosis.sif", "Apoptosis.RData", "Apoptosis.csv", "Apoptosis.bnet"),
     dream     = c("DREAMmodel", "DreamModel.sif", "DreamModel.RData", "DreamModel.csv", "DreamModel.bnet"),
-    tcell     = c("T-Cell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet")
+    TCell     = c("TCell", "TCell.sif", "TCell.RData", "TCell.csv", "TCell.bnet")
   )
   if (!dataset %in% names(dataset_map)) {
     stop(sprintf("Unknown dataset: %s", dataset))

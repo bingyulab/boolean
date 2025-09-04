@@ -20,4 +20,8 @@ dream:
 	python Step_03_Performance.py -d dream -p
 	python Step_04_Plot.py -d dream
 
+TCell:
+	@if [ -f network_analysis.log ]; then rm network_analysis.log; fi
+	python Step_03_Performance.py -d TCell -p
+	python Step_04_Plot.py -d TCell
 .PHONY: install
