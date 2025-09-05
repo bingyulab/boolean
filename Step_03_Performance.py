@@ -582,15 +582,23 @@ def main():
                 f"workers: {args.workers or 'default'}, "
                 f"preprocessing: {args.preprocessing}")    
     runner = OptimizedNetworkRunner(max_workers=args.workers)
-    
-    logger.info("Cleaning up previous dataset files...")
-    runner.cleanup_dataset(args.dataset)
-    logger.info("Cleanup completed.")
-    
+
+
+    file = glob.glob(f"output/comparison_{args.dataset}_*.csv")
+    if len(file) < 10:
+        logger.info("Previous results incomplete or missing, proceeding with cleanup.")
+        start = max([int(f.split('_')[-1].split('.')[0]) for f in file]) + 1
+    else:
+        logger.info("Cleaning up previous dataset files...")
+        runner.cleanup_dataset(args.dataset)
+        logger.info("Cleanup completed.")
+        start = 1
+
     # Run analysis
     logger.info(f"Starting analysis: {args.ntimes} iterations on {args.dataset}")
     start_time = time.time()
-    for i in range(1, args.ntimes + 1):
+
+    for i in range(start, args.ntimes + 1):
         logger.info(f"=== Iteration {i}/{args.ntimes} ===")
         logger.info("Step A: Running perturbation...")
         seed = 42 * i
