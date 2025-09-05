@@ -346,7 +346,7 @@ if (sys.nframe() == 0) {
             n_readout = 8
         )
     } else if (opt$dataset == "toy") {
-        midas_file <- file.path("data", "toy", "ToyModel_test.csv")
+        midas_file <- file.path("data", "ToyModel", "ToyModel_test.csv")
         experimental_design <- list()
         stimuli <- c("EGF", "TNFa")
         inhibitor <- c("Raf", "PI3K")
@@ -372,7 +372,7 @@ if (sys.nframe() == 0) {
         experimental_design$valueStimuli = experiments[, stimuli, drop = FALSE]
         experimental_design$valueInhibitors = experiments[, inhibitor, drop = FALSE]
     } else if (opt$dataset == "dream") {
-        midas_file <- file.path("data", "dream", "DreamModel_test.csv")
+        midas_file <- file.path("data", "DREAMmodel", "DreamModel_test.csv")
         experimental_design <- list()
         stimuli <- c("igf1", "il1a", "tgfa", "tnfa")
         inhibitor <- c("ikk", "mek12", "pi3k", "p38")
@@ -434,7 +434,7 @@ if (sys.nframe() == 0) {
     cat("- Timepoints:", paste(experimental_design$timeSignals, collapse = ", "), "\n")
 
     message("Simulating network responses ...")
-    sim <- simulate_network_response(bnet_file, experimental_design, n_iterations = 20)
+    sim <- simulate_network_response(bnet_file, experimental_design, n_iterations = 20, simLength = 240)
 
     sim$valueCues       <- as.matrix(sim$valueCues)
     sim$valueInhibitors <- as.matrix(sim$valueInhibitors)
