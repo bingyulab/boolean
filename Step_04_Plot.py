@@ -232,22 +232,24 @@ def load_and_plot_results(dataset_name='toy'):
         toy_df = load_results(f"output/comparison_toy_*.csv")
         toy_df = toy_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
         toy_df['dataset'] = "Toy"        
-        combined_df = pd.concat([df, toy_df], ignore_index=True)
+        combined_df = pd.concat([df, toy_df], ignore_index=True)        
+        data_list = [dataset_name, 'Toy']
         
         if dataset_name == 'TCell':     
-            tcell_df = load_results(f"output/comparison_TCell_*.csv")
-            tcell_df = tcell_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
-            tcell_df['dataset'] = "TCell"        
-            combined_df = pd.concat([combined_df, tcell_df], ignore_index=True)
-
+            dream_df = load_results(f"output/comparison_dream_*.csv")
+            dream_df = dream_df[dream_df['total_time'] < 1000]
+            dream_df = dream_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
+            dream_df['dataset'] = "DREAM"        
+            combined_df = pd.concat([combined_df, dream_df], ignore_index=True)
+            data_list = [dataset_name, 'Toy', 'DREAM']
+            
         for metric in ['jaccard', 'hamming', 'f1_score', 'total_time', 'node_jaccard_topology', 
                        'edge_jaccard_topology', 'recon_total', 'mse']:
             fig, axes = plt.subplots(2, 2, figsize=(8, 6))
             fig.suptitle(f'{metric} Similarity Metrics Comparison Across Network', fontsize=16, fontweight='bold')
-            ymin, ymax = combined_df[metric].min(), combined_df[metric].max()
-                    
+            ymin, ymax = combined_df[metric].min(), combined_df[metric].max()                    
 
-            for j, dataset in enumerate([dataset_name, 'Toy']):
+            for j, dataset in enumerate(data_list):
                 dataset_data = combined_df[combined_df['dataset'] == dataset]
                 for i, m in enumerate(methods):
                     ax = axes[i%2, i//2]
