@@ -501,6 +501,17 @@ canRewirePathway <- function(model, rel_info, network_info) {
   # Check if there are downstream relationships to rewire
   downstream_rels <- findDownstreamRelationships(model, rel_info$target, k = 1)
 
+  # Remove any downstream relation that points back to the original source
+  if (length(downstream_rels) > 0) {
+    keep <- sapply(downstream_rels, function(rid) {
+      idx <- match(rid, model$reacID)
+      if (is.na(idx)) return(FALSE)
+      info <- parseRelationship(model, idx)
+      rel_info$source != info$target
+    })
+    downstream_rels <- downstream_rels[keep]
+  }
+
   has_downstream <- length(downstream_rels) > 0
 
   return(has_downstream)
@@ -654,13 +665,6 @@ runPerturbPipeline <- function(dataset      = "toy",
   # Convert to BoolNet format if needed
   if (!file.exists(GD_BNET)) {
     message("Converting SIF to BoolNet format...")
-    # SIFToBoolNet(sifFile     = GD_SIF,
-    #              boolnetFile = GD_BNET,
-    #              CNOlist     = cnolist,
-    #              model       = orig_model,
-    #              fixInputs   = FALSE,
-    #              preprocess  = TRUE,
-    #              ignoreAnds  = TRUE)
     # Convert the model
     result <- writeBnetFromModel(orig_model, GD_BNET) # May have problem
 
@@ -687,16 +691,9 @@ runPerturbPipeline <- function(dataset      = "toy",
   if (!file.exists(rdata_fname)) {
     save(mod_model, file=rdata_fname)
   }
+  print(mod_model)
   writeSIF(mod_model, file=sif_fname, overwrite=TRUE)
   message("Wrote:\n - RData → ", rdata_fname, "\n - SIF   → ", sif_fname, "\n")
-  
-  # SIFToBoolNet(sifFile     = sif_fname,
-              #  boolnetFile = boolnet_fname,
-              #  CNOlist     = cnolist,
-              #  model       = mod_model,
-              #  fixInputs   = FALSE,
-              #  preprocess  = TRUE,
-              #  ignoreAnds  = TRUE)
 
   # Convert modified model to BoolNet format
   result <- writeBnetFromModel(mod_model, boolnet_fname)
@@ -717,8 +714,8 @@ suppressPackageStartupMessages({
 option_list <- list(
   make_option(c("-d", "--dataset"), type="character", default="toy",
               help="Path to original model RData or RDS file", metavar="FILE"),
-  # make_option(c("-p", "--changePCT"), type="double", default=0.9,
-  #             help="Change percentage [default %default]", metavar="DOUBLE"),
+  make_option(c("-p", "--changePCT"), type="double", default=1.0,
+              help="Change percentage [default %default]", metavar="DOUBLE"),
   make_option(c("-s", "--seed"), type="integer", default=44,
               help="Random seed [optional]", metavar="INT"),
   make_option(c("-k", "--k_fold"), type="integer", default=10,
@@ -736,11 +733,20 @@ message(sprintf("Random seed: %d", opt$seed))
 message(sprintf("Number of folds: %d", opt$k_fold))
 
 #--- Run the pipeline --------------------------------------------------------
-for (k in seq(0.0, 0.9, by=0.1)) {
+if (opt$changePCT == 1.0){
+  for (k in seq(0.0, 0.9, by=0.1)) {
+    results <- runPerturbPipeline(
+      dataset      = opt$dataset,
+      change_pct   = k,
+      seed         = opt$seed,
+      nfold        = opt$k_fold
+    )
+  }
+} else {
   results <- runPerturbPipeline(
-    dataset      = opt$dataset,
-    change_pct   = k,
-    seed         = opt$seed,
-    nfold        = opt$k_fold
+      dataset      = opt$dataset,
+      change_pct   = opt$changePCT,
+      seed         = opt$seed,
+      nfold        = opt$k_fold
   )
 }
