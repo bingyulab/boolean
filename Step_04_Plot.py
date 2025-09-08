@@ -128,7 +128,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     for i, method in enumerate(methods):
         ax_sub = axes[i // 2, i % 2]
         ax_sub.set_xlim(0., 1.)
-        ax_sub.set_ylim(0.0, 1.5)
+        ax_sub.set_ylim(0.0, 2.0)  
         method_data = df[df['method'] == method]
         for j, metric in enumerate(metrics_to_analyze):
             
@@ -227,21 +227,19 @@ def load_and_plot_results(dataset_name='toy'):
               f"Avg Hamming = {avg_hamming:.3f}, Avg F1 score = {avg_f1:.3f}")
 
     toy_file = glob.glob(f"output/comparison_toy_*.csv")
-    if dataset_name != 'toy' and (len(toy_file) > 0): 
+    if dataset_name == 'TCell' and (len(toy_file) > 0): 
         print("Loading toy dataset for comparison...")       
         toy_df = load_results(f"output/comparison_toy_*.csv")
         toy_df = toy_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
         toy_df['dataset'] = "Toy"        
-        combined_df = pd.concat([df, toy_df], ignore_index=True)        
-        data_list = [dataset_name, 'Toy']
+        combined_df = pd.concat([df, toy_df], ignore_index=True)       
         
-        if dataset_name == 'TCell':     
-            dream_df = load_results(f"output/comparison_dream_*.csv")
-            dream_df = dream_df[dream_df['total_time'] < 1000]
-            dream_df = dream_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
-            dream_df['dataset'] = "DREAM"        
-            combined_df = pd.concat([combined_df, dream_df], ignore_index=True)
-            data_list = [dataset_name, 'Toy', 'DREAM']
+        dream_df = load_results(f"output/comparison_dream_*.csv")
+        dream_df = dream_df[dream_df['total_time'] < 1000]
+        dream_df = dream_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
+        dream_df['dataset'] = "DREAM"        
+        combined_df = pd.concat([combined_df, dream_df], ignore_index=True)
+        data_list = [dataset_name, 'Toy', 'DREAM']
             
         for metric in ['jaccard', 'hamming', 'f1_score', 'total_time', 'node_jaccard_topology', 
                        'edge_jaccard_topology', 'recon_total', 'mse']:
@@ -270,7 +268,7 @@ def load_and_plot_results(dataset_name='toy'):
                     ax.legend()
                     ax.grid(True, alpha=0.3)
             plt.tight_layout()
-            fig.savefig(f'output/{dataset_name}/size_comparison_{metric}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'output/compare/size_comparison_{metric}.png', dpi=300, bbox_inches='tight')
             plt.close(fig)
 
 # Example usage:
