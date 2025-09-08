@@ -89,6 +89,7 @@ def create_comparison_plots(df, dataset_name='toy'):
     # Left: runtime (log scale)
     for method in methods:
         method_data = df[df['method'] == method]
+        method_data = method_data[method_data['total_time'] < 500]
         ax_time.plot(
             method_data['change_percent'], method_data['total_time'],
             marker='o', linewidth=1.5, markersize=3, label=method, color=method_colors[method]
@@ -206,6 +207,7 @@ def load_and_plot_results(dataset_name='toy'):
     ]
 
     group_columns = ['method', 'change_percent']
+    full_df = full_df[full_df['total_time'] < 500]
 
     df = full_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
     
@@ -235,7 +237,7 @@ def load_and_plot_results(dataset_name='toy'):
         combined_df = pd.concat([df, toy_df], ignore_index=True)       
         
         dream_df = load_results(f"output/comparison_dream_*.csv")
-        dream_df = dream_df[dream_df['total_time'] < 1000]
+        dream_df = dream_df[dream_df['total_time'] < 500]
         dream_df = dream_df.groupby(group_columns, dropna=False)[avg_columns].mean().reset_index()
         dream_df['dataset'] = "DREAM"        
         combined_df = pd.concat([combined_df, dream_df], ignore_index=True)
