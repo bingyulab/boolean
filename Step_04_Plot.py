@@ -128,7 +128,7 @@ def create_comparison_plots(df, dataset_name='toy'):
 
     for i, method in enumerate(methods):
         ax_sub = axes[i // 2, i % 2]
-        ax_sub.set_xlim(0., 1.)
+        ax_sub.set_xlim(0., 1.) 
         ax_sub.set_ylim(0.0, 2.0)  
         method_data = df[df['method'] == method]
         for j, metric in enumerate(metrics_to_analyze):
@@ -137,7 +137,6 @@ def create_comparison_plots(df, dataset_name='toy'):
             # print(f"Baseline for {method}: {metric} at 0% change: {baseline}")
             # Calculate relative performance (performance / baseline)
             relative_performance = method_data[metric] / baseline if baseline != 0 else method_data[metric]
-            
             ax_sub.plot(method_data['change_percent'], relative_performance, 
                        marker='o', linewidth=1.5, markersize=3, label=metrics_to_analyze[j].replace("_", " "))
 
