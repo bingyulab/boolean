@@ -8,7 +8,7 @@ plt.style.use('seaborn-v0_8')
 # sns.set_palette("husl")
 # plt.style.use(['science'])
 # Define the methods and their colors for consistent visualization
-methods = ['CASPO', 'VNS', 'GA', 'ILP']
+methods = ['ASP', 'VNS', 'GA', 'ILP']
 colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#FF7F00']  # Red, Blue, Green, Orange (ColorBrewer Set1)
 method_colors = dict(zip(methods, colors))
     
